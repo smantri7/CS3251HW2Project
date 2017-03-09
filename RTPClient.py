@@ -27,9 +27,6 @@ class client:
 	def receive(self):
 		#TODO
 
-	def checksum(self, b):
-		return hashlib.md5(b).hexdigest()
-
 	#Starts up the client, and gives it the necessary information needed
 	def connect(self):
 		#TODO
