@@ -143,4 +143,13 @@ import java.util.Arrays;
 		public void setTimestamp(int timestamp) {
 			this.timestamp = timestamp;
 		}
+
+		public static void main(String[] args) {
+			RTPHeader header = new RTPHeader(10,20,30);
+			header.setWindowSizeOffset(40);
+			byte[] b = header.getHeaderByteArray();
+			for(byte ba : b) {
+				System.out.println(ba);
+			}
+		}
 	}

@@ -1,16 +1,5 @@
 #RTPHeader for python
-import bitstring
-import bitarray
 class RTPHeader:
-	def __init__(self):
-		self.ack = False
-		self.nack = False
-		self.syn = False
-		self.fin = False
-		self.beg = False 
-		self.timestamp = 0 
-		self.windowSizeOffset = 0 
-	
 	def __init__(self,srcPort,dstPort,seqNum,checksum): 
 		self.ack = False
 		self.nack = False
@@ -24,19 +13,31 @@ class RTPHeader:
 		self.seqNum = seqNum
 		self.checksum = checksum
 
-	def __init__(self,array):
-		self.srcPort = array[0:6]
-		self.dstPort = array[7:13]
-		self.seqNum = array[14:20]
-		self.windowSizeOffset = array[21:27]
-		self.checksum = array[28:34]
-		flags = array[35:41]
-		self.timestamp = array[42:48]
-		self.ack = ((flags >>> 31) & 0x1) != 0
-		self.nack = ((flags >>> 30) & 0x1) != 0
-		self.syn = ((flags >>> 29) & 0x1) != 0
-		self.fin = ((flags >>> 28) & 0x1) != 0
-		self.beg = ((flags >>> 27) & 0x1) != 0
+	def emptyHeader(self):
+		self.ack = False
+		self.nack = False
+		self.syn = False
+		self.fin = False
+		self.beg = False 
+		self.timestamp = 0 
+		self.windowSizeOffset = 0
+
+	def convertArray(self,array):
+		self.srcPort = array[0]
+		self.dstPort = array[1]
+		self.seqNum = array[2]
+		self.windowSizeOffset = array[3]
+		self.checksum = array[4]
+		flags = array[5]
+		self.timestamp = array[6]
+		self.ack = ((rshift(flags,31)) & 0x1) != 0
+		self.nack = ((rshift(flags,30)) & 0x1) != 0
+		self.syn = ((rshift(flags,29)) & 0x1) != 0
+		self.fin = ((rshift(flags,28)) & 0x1) != 0
+		self.beg = ((rshift(flags,27)) & 0x1) != 0
+
+	def rshift(self,val, n): 
+		return (val % 0x100000000) >> n
 
 	def getsrcPort(self):
 		return self.srcPort
@@ -55,9 +56,6 @@ class RTPHeader:
 
 	def getseqNum(self):
 		return self.seqNum
-
-	def checksum(self, b):
-		return hashlib.md5(b).hexdigest()
 
 	def getACK(self):
 		return self.ack
@@ -96,11 +94,6 @@ class RTPHeader:
 		self.checksum = val
 
 	def getByteArray(self):
-		stream = bitstring.BitStream()
-		stream.append(self.srcPort)
-		stream.append(self.dstPort)
-		stream.append(self.seqNum)
-		stream.append(self.windowSizeOffset)
 		ackByte = 0 << 31 
 		nackByte = 0 << 30
 		synByte = 0 << 29
@@ -117,13 +110,11 @@ class RTPHeader:
 		if(self.beg):
 			begByte = 1 << 27
 		flags = ackByte | nackByte | synByte | finByte | begByte
-		stream.append(flags)
-		stream.append(self.timestamp)
-		ans = bitarray.bitarray(stream)
+		ans = bytes([(self.srcPort), (self.dstPort), (self.seqNum), (self.windowSizeOffset), (flags), (self.timestamp)])
 		return ans
 
-	def getTimestamp(self):
-		return self.timestamp
+	def getTimestamp(self):         
+		return self.timestamp         
 
-	def setTimestamp(self,time):
-		self.timestamp = time
+	def setTimestamp(self,time):                  
+		self.timestamp = time         
