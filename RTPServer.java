@@ -70,7 +70,7 @@ public class RTPServer {
 		return (packetChecksum == calculatedChecksum);
 	}
 
-	//LISTEN FUNCTION
+	//LISTEN FUNCTION FSM HERE
 
 	public static void main(String args[]) throws Exception {
 		RTPServer server = new RTPServer(Integer.parseInt(args[0]), Integer.parseInt(args[1]));
