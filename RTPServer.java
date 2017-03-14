@@ -6,6 +6,7 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class RTPServer {
 	private static final int MAXBUFFER = 1000;
@@ -68,6 +69,33 @@ public class RTPServer {
 
 		// Returns the result of comparing the two checksums.
 		return (packetChecksum == calculatedChecksum);
+	}
+
+	public void handshake() {
+		while (state == 1) {
+			recvPacket = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
+			try {
+				socket.receive(recvPacket);
+				byte[] receivedData = new byte[recvPacket.getLength()];
+				receivedData = Arrays.copyOfRange(recvPacket.getData(), 0, recvPacket.getLength());
+				RTPPacket receivedRTPPacket = new RTPPacket(receivedData);
+				RTPHeader receivedHeader = receivedRTPPacket.getHeader();
+
+				if (receivedHeader.isSYN()) {
+					RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
+					responseHeader.setSYN(true);
+					responseHeader.setACK(true);
+					RTPPacket responsePacket = new RTPPacket(responseHeader, null);
+					responsePacket.updateChecksum();
+
+					byte[] packetBytes = responsePacket.getPacketByteArray();
+					sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
+					socket.send(sendPacket);
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
 	}
 
 	public void listen() {
