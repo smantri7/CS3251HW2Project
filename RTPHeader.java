@@ -32,7 +32,6 @@ import java.util.Arrays;
 		private boolean NACK;
 		private boolean SYN;
 		private boolean FIN;
-		private boolean BEG;
 		
 		private int timestamp;
 		
@@ -43,7 +42,6 @@ import java.util.Arrays;
 			this.NACK = false;
 			this.SYN = false;
 			this.FIN = false;
-			this.BEG = false;
 			this.timestamp = 0;
 		}
 		
@@ -78,10 +76,6 @@ import java.util.Arrays;
 
 		public void setFIN(boolean FIN) { this.FIN = FIN; }
 
-		public boolean isBEG() { return BEG; }
-
-		public void setBEG(boolean BEG) { this.BEG = BEG; }
-
 		public void setChecksum(int checksum) { this.checksum = checksum; }
 		
 		public int getChecksum() { return checksum; }
@@ -89,7 +83,7 @@ import java.util.Arrays;
 		public byte[] getHeaderByteArray() {
 			byte[] headerByteArray;
 
-			ByteBuffer byteBuffer = ByteBuffer.allocate(Integer.BYTES * 7);
+			ByteBuffer byteBuffer = ByteBuffer.allocate(4 * 7);
 			byteBuffer.order(ByteOrder.BIG_ENDIAN);
 
 			byteBuffer.putInt(srcPort);
@@ -102,10 +96,9 @@ import java.util.Arrays;
 			int nackByte = (NACK ? 1 : 0) << 30;
 			int synByte = (SYN ? 1 : 0) << 29;
 			int finByte = (FIN ? 1 : 0) << 28;
-			int begByte = (BEG ? 1 : 0) << 27;
 			
 
-			int flags = ackByte | nackByte | synByte | finByte | begByte;
+			int flags = ackByte | nackByte | synByte | finByte;
 			byteBuffer.putInt(flags);
 			byteBuffer.putInt(timestamp);
 			headerByteArray = byteBuffer.array();
@@ -127,14 +120,11 @@ import java.util.Arrays;
 			int nackInt = (flags >>> 30) & 0x1;
 			int synInt = (flags >>> 29) & 0x1;
 			int finInt = (flags >>> 28) & 0x1;
-			int begInt = (flags >>> 27) & 0x1;
 			
 			this.ACK = (ackInt != 0);
 			this.NACK = (nackInt != 0);
 			this.SYN = (synInt != 0);
-			this.FIN = (finInt != 0);
-			this.BEG = (begInt != 0);
-		}
+			this.FIN = (finInt != 0);		}
 		
 		public int getTimestamp() {
 			return timestamp;
