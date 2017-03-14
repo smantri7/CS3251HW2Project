@@ -89,7 +89,7 @@ import java.util.Arrays;
 		public byte[] getHeaderByteArray() {
 			byte[] headerByteArray;
 
-			ByteBuffer byteBuffer = ByteBuffer.allocate(Integer.BYTES * 7);
+			ByteBuffer byteBuffer = ByteBuffer.allocate(4 * 7);
 			byteBuffer.order(ByteOrder.BIG_ENDIAN);
 
 			byteBuffer.putInt(srcPort);
