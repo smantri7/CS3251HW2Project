@@ -70,11 +70,30 @@ public class RTPServer {
 		return (packetChecksum == calculatedChecksum);
 	}
 
+	public void listen() {
+		while (true) {
+			DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
+			try {
+				socket.receive(packet);
+				System.out.println(packet.getAddress() + " " + packet.getPort() + ": " + new String(packet.getData()));
+				String packetText = new String(packet.getData(), "UTF-8").toUpperCase().trim();
+				System.out.println(packetText);
+				RTPPacket responsePacket = new RTPPacket(srcPort, packet.getPort(), packetText.getBytes());
+				byte[] responseArray = responsePacket.getPacketByteArray();
+				socket.send(new DatagramPacket(responseArray, responseArray.length));
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+
+		}
+	}
+
 	//LISTEN FUNCTION FSM HERE
 
 	public static void main(String args[]) throws Exception {
 		RTPServer server = new RTPServer(Integer.parseInt(args[0]), Integer.parseInt(args[1]));
 		server.recvPacket = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
 		server.state = 1;
+		server.listen();
 	}
 }
