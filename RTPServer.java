@@ -25,7 +25,7 @@ public class RTPServer {
 
 	private int wSize;
 
-	private int state = 0; //0==closed, 1==listen, 2==established
+	private int state = 0; //0==closed, 1==listen, 2==listen wait for ack, 3==established
 
 	public RTPServer(int srcPort, int wSize) throws SocketException {
 		this.srcPort = srcPort;
@@ -72,7 +72,7 @@ public class RTPServer {
 	}
 
 	public void handshake() {
-		while (state == 1) {
+		while (state == 1 || state == 2) {
 			recvPacket = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
 			try {
 				socket.receive(recvPacket);
@@ -81,7 +81,7 @@ public class RTPServer {
 				RTPPacket receivedRTPPacket = new RTPPacket(receivedData);
 				RTPHeader receivedHeader = receivedRTPPacket.getHeader();
 
-				if (receivedHeader.isSYN()) {
+				if (state == 1 && receivedHeader.isSYN()) {
 					RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
 					responseHeader.setSYN(true);
 					responseHeader.setACK(true);
@@ -91,6 +91,11 @@ public class RTPServer {
 					byte[] packetBytes = responsePacket.getPacketByteArray();
 					sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
 					socket.send(sendPacket);
+					state = 2;
+				}
+
+				if (state == 2 && receivedHeader.isACK()) {
+					state = 3;
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
