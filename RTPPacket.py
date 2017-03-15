@@ -17,3 +17,6 @@ class RTPPacket:
 
 	def setHeader(self,v):
 		self.header = v
+
+	def toByteStream(self):
+		return self.getHeader().getByteArray() + bytes(self.getData()) 

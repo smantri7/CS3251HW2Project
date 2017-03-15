@@ -1,4 +1,6 @@
 #RTPHeader for python
+import struct
+
 class RTPHeader:
 	def __init__(self,srcPort,dstPort,seqNum,checksum): 
 		self.ack = False
@@ -8,10 +10,10 @@ class RTPHeader:
 		self.beg = False
 		self.timestamp = 0
 		self.windowSizeOffset = 0
-		self.srcPort = srcPort
-		self.dstPort = dstPort
-		self.seqNum = seqNum
-		self.checksum = checksum
+		self.srcPort = int(srcPort)
+		self.dstPort = int(dstPort)
+		self.seqNum = int(seqNum)
+		self.checksum = int(checksum)
 
 	def emptyHeader(self):
 		self.ack = False
@@ -22,19 +24,14 @@ class RTPHeader:
 		self.timestamp = 0 
 		self.windowSizeOffset = 0
 
-	def convertArray(self,array):
-		self.srcPort = array[0]
-		self.dstPort = array[1]
-		self.seqNum = array[2]
-		self.windowSizeOffset = array[3]
-		self.checksum = array[4]
-		flags = array[5]
-		self.timestamp = array[6]
+	def convertArray(self,headerBytes):
+		self.srcPort, self.dstPort, self.seqNum, self.windowSizeOffset, self.checksum, flags, self.timestamp = struct.unpack("!IIIIIII", headerBytes)
 		self.ack = ((rshift(flags,31)) & 0x1) != 0
 		self.nack = ((rshift(flags,30)) & 0x1) != 0
 		self.syn = ((rshift(flags,29)) & 0x1) != 0
 		self.fin = ((rshift(flags,28)) & 0x1) != 0
 		self.beg = ((rshift(flags,27)) & 0x1) != 0
+
 
 	def rshift(self,val, n): 
 		return (val % 0x100000000) >> n
@@ -43,16 +40,16 @@ class RTPHeader:
 		return self.srcPort
 
 	def setsrcPort(self,val):
-		self.srcPort = val
+		self.srcPort = int(val)
 
 	def getdstPort(self):
 		return self.dstPort
 
 	def setdstPort(self,val):
-		self.dstPort = val
+		self.dstPort = int(val)
 
 	def setseqNum(self,val):
-		self.seqNum = val
+		self.seqNum = int(val)
 
 	def getseqNum(self):
 		return self.seqNum
@@ -91,7 +88,7 @@ class RTPHeader:
 		return self.checksum
 
 	def setChecksum(self,val):
-		self.checksum = val
+		self.checksum = int(val)
 
 	def getByteArray(self):
 		ackByte = 0 << 31 
@@ -110,7 +107,11 @@ class RTPHeader:
 		if(self.beg):
 			begByte = 1 << 27
 		flags = ackByte | nackByte | synByte | finByte | begByte
-		ans = bytes([(self.srcPort), (self.dstPort), (self.seqNum), (self.windowSizeOffset), (flags), (self.timestamp)])
+		# ans = bytes(self.srcPort) + bytes(self.dstPort) + bytes(self.seqNum) + bytes(self.windowSizeOffset) +  bytes(flags) + bytes(self.timestamp)
+		# ans = self.srcPort |
+		# return ans
+		# print(self.srcPort, self.dstPort, self.seqNum, self.windowSizeOffset, self.getChecksum(), flags, self.getTimestamp())
+		ans = struct.pack("!IIIIIII", self.srcPort, self.dstPort, self.seqNum, self.windowSizeOffset, self.getChecksum(), flags, self.getTimestamp())
 		return ans
 
 	def getTimestamp(self):         
