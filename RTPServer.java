@@ -13,7 +13,8 @@ import java.io.FileOutputStream;
 
 public class RTPServer {
 	private static final int MAXBUFFER = 1000;
-	private DatagramSocket socket;
+	private DatagramSocket recvSocket;
+	private DatagramSocket sendSocket;
 
 	DatagramPacket recvPacket;
 	DatagramPacket sendPacket;
@@ -39,7 +40,8 @@ public class RTPServer {
 		filename = "bufferFile";
 		packetSendBuffer = new ArrayList<RTPPacket>();
 		packetReceivedBuffer = new ArrayList<RTPPacket>();
-		socket = new DatagramSocket(srcPort);
+		recvSocket = new DatagramSocket(srcPort);
+		sendSocket = new DatagramSocket(srcPort);
 	}
 
 	public void sendRTPPacket(byte[] data) throws IOException {
@@ -51,7 +53,7 @@ public class RTPServer {
 
 		data = sendPacket.getPacketByteArray();
 
-		socket.send(new DatagramPacket(data, data.length, dstAddress, dstPort));
+		sendSocket.send(new DatagramPacket(data, data.length, dstAddress, dstPort));
 	}
 
 	public void createFileFromByteArray(String filename, byte[] fileByteArray) {
@@ -76,7 +78,7 @@ public class RTPServer {
 		while (true) {
 			DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
 			try {
-				socket.receive(packet);
+				recvSocket.receive(packet);
 				byte[] receivedData = new byte[packet.getLength()];
 				receivedData = Arrays.copyOfRange(packet.getData(), 0, packet.getLength());
 
@@ -97,7 +99,7 @@ public class RTPServer {
 
 						byte[] packetBytes = responsePacket.getPacketByteArray();
 						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
-						socket.send(sendPacket);
+						sendSocket.send(sendPacket);
 						state = 2;
 					}
 					//3rd part of handshake
@@ -116,7 +118,7 @@ public class RTPServer {
 
 						byte[] packetBytes = responsePacket.getPacketByteArray();
 						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
-						socket.send(sendPacket);
+						sendSocket.send(sendPacket);
 					}
 
 					//fin indicates end of file
