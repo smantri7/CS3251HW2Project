@@ -41,7 +41,7 @@ public class RTPServer {
 		packetSendBuffer = new ArrayList<RTPPacket>();
 		packetReceivedBuffer = new ArrayList<RTPPacket>();
 		recvSocket = new DatagramSocket(srcPort);
-		sendSocket = new DatagramSocket(srcPort);
+		sendSocket = new DatagramSocket(srcPort + 1);
 	}
 
 	public void sendRTPPacket(byte[] data) throws IOException {
