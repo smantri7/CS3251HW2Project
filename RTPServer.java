@@ -31,6 +31,7 @@ public class RTPServer {
 		this.srcPort = srcPort;
 		this.wSize = wSize;
 
+		filename = "bufferFile";
 		packetSendBuffer = new ArrayList<RTPPacket>();
 		packetReceivedBuffer = new ArrayList<RTPPacket>();
 		socket = new DatagramSocket(srcPort);
@@ -61,46 +62,9 @@ public class RTPServer {
 
 	public static boolean validateChecksum(RTPPacket packet) {
 		
-		// Obtains the checksum from the passed in packet.
 		int packetChecksum = packet.getHeader().getChecksum();
-		
-		// Recalculates a checksum for the packet for comparison.
 		int calculatedChecksum = packet.calculateChecksum();
-
-		// Returns the result of comparing the two checksums.
 		return (packetChecksum == calculatedChecksum);
-	}
-
-	public void handshake() {
-		while (state == 1 || state == 2) {
-			recvPacket = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
-			try {
-				socket.receive(recvPacket);
-				byte[] receivedData = new byte[recvPacket.getLength()];
-				receivedData = Arrays.copyOfRange(recvPacket.getData(), 0, recvPacket.getLength());
-				RTPPacket receivedRTPPacket = new RTPPacket(receivedData);
-				RTPHeader receivedHeader = receivedRTPPacket.getHeader();
-
-				if (state == 1 && receivedHeader.isSYN()) {
-					RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
-					responseHeader.setSYN(true);
-					responseHeader.setACK(true);
-					RTPPacket responsePacket = new RTPPacket(responseHeader, null);
-					responsePacket.updateChecksum();
-
-					byte[] packetBytes = responsePacket.getPacketByteArray();
-					sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
-					socket.send(sendPacket);
-					state = 2;
-				}
-
-				if (state == 2 && receivedHeader.isACK()) {
-					state = 3;
-				}
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
 	}
 
 	public void listen() {
@@ -108,12 +72,55 @@ public class RTPServer {
 			DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
 			try {
 				socket.receive(packet);
-				System.out.println(packet.getAddress() + " " + packet.getPort() + ": " + new String(packet.getData()));
-				String packetText = new String(packet.getData(), "UTF-8").toUpperCase().trim();
-				System.out.println(packetText);
-				RTPPacket responsePacket = new RTPPacket(srcPort, packet.getPort(), packetText.getBytes());
-				byte[] responseArray = responsePacket.getPacketByteArray();
-				socket.send(new DatagramPacket(responseArray, responseArray.length));
+				byte[] receivedData = new byte[packet.getLength()];
+				receivedData = Arrays.copyOfRange(packet.getData(), 0, packet.getLength());
+
+				RTPPacket receivedRTPPacket = new RTPPacket(receivedData);
+				RTPHeader receivedHeader = receivedRTPPacket.getHeader();
+
+				//Validate Checksum
+				if (receivedHeader.getChecksum() == receivedRTPPacket.calculateChecksum()) {
+					//Handshake
+					if (state == 1 && receivedHeader.isSYN()) {
+						RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
+						responseHeader.setSYN(true);
+						responseHeader.setACK(true);
+						RTPPacket responsePacket = new RTPPacket(responseHeader, null);
+						responsePacket.updateChecksum();
+
+						byte[] packetBytes = responsePacket.getPacketByteArray();
+						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
+						socket.send(sendPacket);
+						state = 2;
+					}
+					//3rd part of handshake
+					if (state == 2 && receivedHeader.isACK()) {
+						state = 3;
+					}
+
+					//put incoming packets into receive buffer
+					if (state == 3) {
+						packetReceivedBuffer.add(receivedRTPPacket);
+					}
+
+					//fin indicates end of file
+					if (state == 3 && receivedHeader.isFIN()) {
+						ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+						for (RTPPacket packet : packetReceiveBuffer) {
+							outputStream.write(packet.getData());
+						}
+						createFileFromByteArray(filename, outputStream.toByteArray());
+						packetReceiveBuffer.clear();	
+					}
+				}
+
+
+				// System.out.println(packet.getAddress() + " " + packet.getPort() + ": " + new String(packet.getData()));
+				// String packetText = new String(packet.getData(), "UTF-8").toUpperCase().trim();
+				// System.out.println(packetText);
+				// RTPPacket responsePacket = new RTPPacket(srcPort, packet.getPort(), packetText.getBytes());
+				// byte[] responseArray = responsePacket.getPacketByteArray();
+				// socket.send(new DatagramPacket(responseArray, responseArray.length));
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -121,7 +128,59 @@ public class RTPServer {
 		}
 	}
 
-	//LISTEN FUNCTION FSM HERE
+	//TODO: IMPLEMENT GO BACK N
+	//need more states? probably
+	public void sendFilePackets(String fName) {
+		File file = new File(fName);
+		
+		byte[] byteArray = new byte[(int) file.length()];
+		
+		try {
+			FileInputStream fileInputStream = new FileInputStream(file);
+			fileInputStream.read(byteArray);
+
+			//make uppercase or some shit
+			
+			byte[] packetBytes;
+			
+			if (byteArray.length < MAXBUFFER) {
+				packetBytes = new byte[byteArray.length];
+			} else {
+				packetBytes = new byte[MAXBUFFER];
+			}
+			
+			int packetNumber = 0;
+			RTPHeader rtpHeader = new RTPHeader(sourcePort, destinationPort, packetNumber);
+			RTPPacket rtpPacket;
+			
+			for (int i = 0; i < byteArray.length; i++) {
+				packetBytes[i] = byteArray[(packetNumber * (MAXBUFFER-1)) + i];
+				
+				if (i % MAXBUFFER == 0 && !(i < MAXBUFFER)) {
+					rtpHeader.setSequenceNumber(sequenceNumber++);
+					rtpPacket = new RTPPacket(rtpHeader, packetBytes);
+					rtpPacket.updateChecksum();
+
+					packetNumber += 1;
+					sendRTPPacket(rtpPacket.getPacketByteArray());
+				}
+			}
+			
+			rtpHeader.setFIN(true);
+			rtpHeader.setSequenceNumber(sequenceNumber++);
+			rtpPacket = new RTPPacket(rtpHeader, packetBytes);
+			rtpPacket.updateChecksum();
+			sendRTPPacket(rtpPacket.getPacketByteArray());
+			
+			
+			fileInputStream.close();
+		} catch (FileNotFoundException e) {
+			System.out.println("File was not found.");		
+		} catch (IOException e) {
+			System.out.println("Error reading file.");
+			
+		}
+	}
 
 	public static void main(String args[]) throws Exception {
 		RTPServer server = new RTPServer(Integer.parseInt(args[0]), Integer.parseInt(args[1]));
