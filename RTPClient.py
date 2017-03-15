@@ -1,7 +1,7 @@
 #this is the client for the UDP connection (runs the client)
 import socket
 import sys
-import hashlib
+import zlib
 from RTPHeader import RTPHeader
 from RTPPacket import RTPPacket
 import time
@@ -47,23 +47,24 @@ class RTPClient:
 		#create socket, bind, begin the sending process
 		sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 		sockRecv = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-		sock.bind((socket.gethostname(),2000))
-		sockRecv.bind((socket.gethostname(),2001))
+		sock.bind((socket.gethostname(),int(self.portNum)))
+		sockRecv.bind((socket.gethostname(),int(self.portNum) + 1))
 		#set the time out
 		sockRecv.settimeout(5)
 		#Before starting we need to get RTT with SYN bit
 
-		h = RTPHeader(self.host,self.portNum,0,0)
+		h = RTPHeader(int(self.portNum) + 1,self.portNum,0,0)
 		h.setSYN(True)
 		tinit = time.time()
 		pikmin = RTPPacket(h,0)
-		temp = pikmin.getHeader().setChecksum(self.checksum(pikmin))
 		pikmin.getHeader().setseqNum(bytes(pikmin.getData())[0])
+		pikmin.getHeader().setChecksum(self.checksum(pikmin))
 		#Incase server crashes initially during 3-way handshake
 		try:
-			sock.sendto(pikmin,(self.host,int(self.portNum)))
+			sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
 			resSock = sockRecv.recvfrom(4096)
 		except Exception as e:
+			print(e)
 			print("Socket timed out. Server may have crashed.")
 			return
 		tfinal = time.time()
@@ -76,7 +77,8 @@ class RTPClient:
 		h = RTPHeader()
 		h.setACK(True)
 		try:
-			sock.sendto(RTPPacket(self.host,self.portNum,h,0),(self.host,self.portNum))
+			pikmin = RTPPacket(self.host,self.portNum,h,0)
+			sock.sendto(pikmin.toByteStream(),(self.host,self.portNum))
 			resSock = sockRecv.recvfrom(4096)
 		except Exception as e:
 			print("Socket timed out. Server may have crashed.")
@@ -163,10 +165,8 @@ class RTPClient:
 		return packet.getHeader().getChecksum() == expected
 
 	def checksum(self, aPacket): # dude use CRC32. or not. we just need to decide on one
-		header = aPacket.getHeader()
-		first = hashlib.md5(str(aPacket.getData())).hexdigest()
-		second = hashlib.md5(aPacket.getHeader().getByteArray()).hexdigest()
-		return first + second
+		crc = zlib.crc32(bytes(aPacket.getData())) & 0xffffffff
+		return crc
 
 if __name__ == "__main__":
 	c = RTPClient(sys.argv[1],sys.argv[2],sys.argv[3])
