@@ -1,5 +1,4 @@
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -7,6 +6,10 @@ import java.net.InetAddress;
 import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 
 public class RTPServer {
 	private static final int MAXBUFFER = 1000;
@@ -15,6 +18,8 @@ public class RTPServer {
 	DatagramPacket recvPacket;
 	DatagramPacket sendPacket;
 
+	private int dstPort;
+	private InetAddress dstAddress;
 	private int srcPort;
 	private int threshold;
 	private int sequenceNumber;
@@ -37,7 +42,7 @@ public class RTPServer {
 		socket = new DatagramSocket(srcPort);
 	}
 
-	public void sendRTPPacket(byte[] data, InetAddress dstAddress, int dstPort) throws IOException {
+	public void sendRTPPacket(byte[] data) throws IOException {
 		RTPPacket sendPacket;
 		RTPHeader sendHeader = new RTPHeader(srcPort, dstPort, sequenceNumber);
 
@@ -82,6 +87,8 @@ public class RTPServer {
 				if (receivedHeader.getChecksum() == receivedRTPPacket.calculateChecksum()) {
 					//Handshake
 					if (state == 1 && receivedHeader.isSYN()) {
+						dstPort = packet.getPort();
+						dstAddress = packet.getAddress();
 						RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
 						responseHeader.setSYN(true);
 						responseHeader.setACK(true);
@@ -101,16 +108,25 @@ public class RTPServer {
 					//put incoming packets into receive buffer
 					if (state == 3) {
 						packetReceivedBuffer.add(receivedRTPPacket);
+						RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
+						responseHeader.setACK(true);
+						responseHeader.setseqNum(receivedHeader.getseqNum());
+						RTPPacket responsePacket = new RTPPacket(responseHeader, null);
+						responsePacket.updateChecksum();
+
+						byte[] packetBytes = responsePacket.getPacketByteArray();
+						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
+						socket.send(sendPacket);
 					}
 
 					//fin indicates end of file
 					if (state == 3 && receivedHeader.isFIN()) {
 						ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-						for (RTPPacket packet : packetReceiveBuffer) {
-							outputStream.write(packet.getData());
+						for (RTPPacket p : packetReceivedBuffer) {
+							outputStream.write(p.getData());
 						}
 						createFileFromByteArray(filename, outputStream.toByteArray());
-						packetReceiveBuffer.clear();	
+						packetReceivedBuffer.clear();	
 					}
 				}
 
@@ -150,14 +166,14 @@ public class RTPServer {
 			}
 			
 			int packetNumber = 0;
-			RTPHeader rtpHeader = new RTPHeader(sourcePort, destinationPort, packetNumber);
+			RTPHeader rtpHeader = new RTPHeader(srcPort, dstPort, packetNumber);
 			RTPPacket rtpPacket;
 			
 			for (int i = 0; i < byteArray.length; i++) {
 				packetBytes[i] = byteArray[(packetNumber * (MAXBUFFER-1)) + i];
 				
 				if (i % MAXBUFFER == 0 && !(i < MAXBUFFER)) {
-					rtpHeader.setSequenceNumber(sequenceNumber++);
+					rtpHeader.setseqNum(sequenceNumber++);
 					rtpPacket = new RTPPacket(rtpHeader, packetBytes);
 					rtpPacket.updateChecksum();
 
@@ -167,7 +183,7 @@ public class RTPServer {
 			}
 			
 			rtpHeader.setFIN(true);
-			rtpHeader.setSequenceNumber(sequenceNumber++);
+			rtpHeader.setseqNum(sequenceNumber++);
 			rtpPacket = new RTPPacket(rtpHeader, packetBytes);
 			rtpPacket.updateChecksum();
 			sendRTPPacket(rtpPacket.getPacketByteArray());
