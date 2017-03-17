@@ -148,7 +148,7 @@ public class RTPServer {
 
 	//TODO: IMPLEMENT GO BACK N
 	//need more states? probably
-	public void sendFilePackets(String fName) {
+	public void sendFilePackets(String fName) throws Exception {
 		File file = new File(fName);
 		
 		byte[] byteArray = new byte[(int) file.length()];
@@ -170,19 +170,42 @@ public class RTPServer {
 			int packetNumber = 0;
 			RTPHeader rtpHeader = new RTPHeader(srcPort, dstPort, packetNumber);
 			RTPPacket rtpPacket;
-			
-			for (int i = 0; i < byteArray.length; i++) {
-				packetBytes[i] = byteArray[(packetNumber * (MAXBUFFER-1)) + i];
-				
-				if (i % MAXBUFFER == 0 && !(i < MAXBUFFER)) {
-					rtpHeader.setseqNum(sequenceNumber++);
-					rtpPacket = new RTPPacket(rtpHeader, packetBytes);
-					rtpPacket.updateChecksum();
 
-					packetNumber += 1;
-					sendRTPPacket(rtpPacket.getPacketByteArray());
+			//Todo go back n
+			boolean finished = false;
+			while(!finished) {
+				//send N packets
+				for (int i = 0; i < byteArray.length; i++) {
+					packetBytes[i] = byteArray[(packetNumber * (MAXBUFFER - 1)) + i];
+					if (i % MAXBUFFER == 0 && !(i < MAXBUFFER)) {
+						rtpHeader.setseqNum(sequenceNumber++);
+						rtpPacket = new RTPPacket(rtpHeader, packetBytes);
+						rtpPacket.updateChecksum();
+
+						packetNumber += 1;
+						sendRTPPacket(rtpPacket.getPacketByteArray());
+					}
 				}
+				try {
+					DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
+					recvSocket.receive(packet);
+					byte[] receivedData = new byte[packet.getLength()];
+					receivedData = Arrays.copyOfRange(packet.getData(),0,packet.getLength());
+					RTPPacket receivedP = new RTPPacket(receivedData);
+					RTPHeader receivedH = receivedP.getHeader();
+					if(receivedH.getChecksum() == receivedP.calculateChecksum()) {
+
+					} else {
+						//update the window pointers?
+						//add received packets to file?
+					}
+				} catch(Exception e) {
+					System.out.println(e.getMessage());
+					return;
+				}
+
 			}
+
 			
 			rtpHeader.setFIN(true);
 			rtpHeader.setseqNum(sequenceNumber++);
