@@ -10,9 +10,11 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.util.*;
 
-public class RTPServer {
+public class RTPServer  {
 	private static final int MAXBUFFER = 1000;
+	private static final int MAXRECV = 1030;
 	private DatagramSocket recvSocket;
 	private DatagramSocket sendSocket;
 
@@ -30,6 +32,8 @@ public class RTPServer {
 	private ArrayList<RTPPacket> packetReceivedBuffer;
 
 	private int wSize;
+
+	private int packetNum = 0;
 
 	private int state = 0; //0==closed, 1==listen, 2==listen wait for ack, 3==established
 
@@ -76,20 +80,23 @@ public class RTPServer {
 
 	public void listen() {
 		while (true) {
-			DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
+			DatagramPacket packet = new DatagramPacket(new byte[MAXRECV], MAXRECV);
+			packetNum += 1;
 			try {
 				recvSocket.receive(packet);
 				System.out.println("Received a packet!");
+				if(packetNum == 1413) {
+					System.out.println(new String(packetReceivedBuffer.get(5).getData()));
+				}
 				byte[] receivedData = new byte[packet.getLength()];
-				System.out.println(receivedData.length);
 				receivedData = Arrays.copyOfRange(packet.getData(), 0, packet.getLength());
 
 				RTPPacket receivedRTPPacket = new RTPPacket(receivedData);
 				RTPHeader receivedHeader = receivedRTPPacket.getHeader();
-				System.out.println(receivedHeader.isSYN());
+				//System.out.println(receivedHeader.isSYN());
 				//Validate Checksum
-				System.out.println(receivedHeader.getChecksum());
-				System.out.println(receivedRTPPacket.calculateChecksum());
+				//System.out.println(receivedHeader.getChecksum());
+				//System.out.println(receivedRTPPacket.calculateChecksum());
 				//put incoming packets into receive buffer
 				if (state == 3) {
 					packetReceivedBuffer.add(receivedRTPPacket);
@@ -100,7 +107,9 @@ public class RTPServer {
 					responsePacket.updateChecksum();
 
 					byte[] packetBytes = responsePacket.getEntireByteArray();
-					sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), 2001);
+					sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
+					System.out.println("Sent ACK packet in state 3");
+					System.out.printf("Seq number is: %d",responsePacket.getHeader().getseqNum());
 					sendSocket.send(sendPacket);
 				}
 				if (receivedHeader.getChecksum() == receivedRTPPacket.calculateChecksum()) {
@@ -117,7 +126,6 @@ public class RTPServer {
 
 						byte[] packetBytes = responsePacket.getEntireByteArray();
 						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
-						System.out.println("Sending a packet!");
 						sendSocket.send(sendPacket);
 						state = 2;
 					}

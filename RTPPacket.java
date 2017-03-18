@@ -3,9 +3,10 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.zip.CRC32;
 import java.util.zip.Checksum;
+import java.util.*;
 
 
-public class RTPPacket {
+public class RTPPacket implements Comparable<RTPPacket> {
 
 	private RTPHeader header;
 
@@ -35,7 +36,9 @@ public class RTPPacket {
 			this.setData(dataBytes);
 		}
 	}
-	
+	public int compareTo(RTPPacket other) {
+		return this.getHeader().getseqNum() - other.getHeader().getseqNum();
+	}
 	public byte[] getPacketByteArray() {
 		byte[] packetByteArray;
 		byte[] headerByteArray;

@@ -5,7 +5,7 @@ import zlib
 from RTPHeader import RTPHeader
 from RTPPacket import RTPPacket
 import time
-import RTPWindow
+from RTPWindow import RTPWindow
 #networklab1 4000 5     #4000 5
 class RTPClient:
 	#constructor class that contains IP, portnumber, and the textfile name
@@ -32,12 +32,14 @@ class RTPClient:
 		ans = f.read()
 		ans = ans.lower()
 		f.close()
+		ans = ans.encode('utf-8')
 		b = bytes(ans)
-		split = [b[i:i+1000] for i in range(0, len(b),1000)]
+		split = [b[i:i+1000] for i in range(0, len(b),1000)] #1000 byte is max packet load
 		for d in split:
-			header = RTPHeader(self.host,self.portNum,0,0)
-			p = RTPPacket(self.host,self.portNum,header,d)
+			header = RTPHeader(0,0,0,0) #update seqnum and checksum LATER
+			p = RTPPacket(header,d)
 			self.packets.append(p)
+		print("Self.packets is: ",len(self.packets))
 		#Turn text into bytes
 	#turns byte into strings	
 	def writeToFile(self,packList):
@@ -48,7 +50,7 @@ class RTPClient:
 		f.close()
 	#Starts up the client, and gives it the necessary information needed
 	def connect(self):
-		#TODO
+		#Check if user wants to transform
 		#create socket, bind, begin the sending process
 		sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 		sockRecv = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -65,17 +67,13 @@ class RTPClient:
 		pikmin.getHeader().setseqNum(self.currSeqNum) #initial seq number of client
 		pikmin.getHeader().setChecksum(self.checksum(pikmin)) #checksum of packet
 
-		print("Sockets Updated.")
 		#Incase server crashes initially during 3-way handshake
 		#Client sends syn bit and initial seq number
 		#Client receives syn ack on, server init seq number
 		#Client sends ack for that
 		try:
-			print("Sending...")
 			sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
-			print("Receiving...")
 			resSock = sockRecv.recvfrom(4096)
-			print("Connected!")
 		except Exception as e:
 			print(e)
 			print("Socket timed out. Server may have crashed.")
@@ -99,26 +97,29 @@ class RTPClient:
 			print("Connection Refused sending Error. Try again!")
 			return
 		print("Connection Successful!")
-		#send(sock)
+		self.send(sock,sockRecv)
 		#receive(sockRecv)
 		#Now we can start the true connection
 		#################################################
 
-	def send(self,sock):
+	def send(self,sock,sockRecv):
 		finished = False
-		if(self.winSize > len(self.packets)):
-			window = RTPWindow(0,len(self.packets),len(self.packets))
+		if(int(self.winSize) > len(self.packets)):
+			window = RTPWindow(0,len(self.packets) - 1,len(self.packets))
 		else:
-			window = RTPWindow(0,self.winSize - 1,len(self.packets))
+			window = RTPWindow(0,int(self.winSize) - 1,len(self.packets))
+		numPacks = 0
 		#make sure that we are indexing the right amount
 		while(not finished):
 			#go back N implementation
-			for i in range(window.getMin(),window.getMax()):
+			for i in range(window.getMin(),window.getMax() + 1):
 				p = self.packets[i]
 				#calc checksum and seq number of all the packets
 				p.getHeader().setChecksum(self.checksum(p))
 				p.getHeader().setseqNum(self.currSeqNum + i + 1)
-				p.getHeader().setTimestamp(time.time())
+				#print(p.getHeader().getseqNum())
+				p.getHeader().setTimestamp(int(time.time()))
+				print(i)
 				#send each packet (convert to bytes)
 				sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
 				#start timer in the window
@@ -128,27 +129,32 @@ class RTPClient:
 			#make sure that it doesn't timeout, otherwise server may have crashed
 			while(wait):
 				try:
-					packet,addr = sock.recvfrom(4096)
+					packet = sockRecv.recvfrom(1030)
+					#check if packet is data packet or ACK/NACK etc
+					packet = self.streamToPacket(packet[0])
+					#if packet has data we go into receive state. Otherwise we go back to send state
+					if(packet.getHeader().getACK() is True):
+					#send ACK
+						if(len(self.packets) == window.getMax() + 1): 
+							print("Finished!")
+							print(len(self.packets))
+							print(str(self.packets[5].getData()))
+							finished = True
+							break
+						wait = self.updateWindowSend(packet,window)
+					else: 
+						print("Got to receive")
+					#self.receive(sockRecv)
+				#packet received, check if we need to move the window or not
+				#good packets will now be converted into data, and updated properly
 				except Exception as e:
+					print(e)
 					print("Timedout, resending")
-					wait = False
 					tries += 1
 					if(tries == 3):
 						print("Server may have crashed")
 						return
-					break
-				#check if packet is data packet or ACK/NACK etc
-				#send ACK
-				if(len(self.packets) == window.getMax()): 
-					finished = True
-					break
-				packet = streamToPacket(packet)
-				if(packet.getHeader().getACK()):
-					wait = False 
-					updateWindowSend(window)
-				#packet received, check if we need to move the window or not
-			
-				#good packets will now be converted into data, and updated properly
+
 	
 	def receive(self,sockRecv):
 		received = []
@@ -213,15 +219,18 @@ class RTPClient:
 	#moves your send window
 	def updateWindowSend(self,packet,window):
 		for x in range(len(self.packets)):
-			if(self.packets[x].getseqNum() <= packet.getseqNum()):
+			if(self.packets[x].getHeader().getseqNum() <= packet.getHeader().getseqNum()):
 				window.setList(x,True)
-		i = 0
-		while(window.getList()[i] is True):
-			i+=1
-		window.setMin(window.getMin() + i)
-		window.setMax(window.getMax() + i)
-		if(window.getMax() >= len(self.packets)):
-			window.setMax(len(self.packets))
+		false = False
+		if false not in window.getList()[window.getMin():window.getMax() + 1]:
+			window.setMin(window.getMin() + int(self.winSize))
+			window.setMax(window.getMax() + int(self.winSize))
+			if(window.getMax() >= len(self.packets)):
+				window.setMin(len(self.packets) - int(self.winSize))
+				window.setMax(len(self.packets) - 1)
+			return False
+		return True
+		
 
 
 	def timeout(self,packet):
@@ -233,13 +242,9 @@ class RTPClient:
 
 	def checksum(self, aPacket): # dude use CRC32. or not. we just need to decide on one
 		crc = zlib.crc32(bytes(aPacket.getData())) & 0xffffffff
-		print("Checksum: ",crc)
 		return crc
 
 if __name__ == "__main__":
 	c = RTPClient(sys.argv[1],sys.argv[2],sys.argv[3])
-	while(c.connect()):
-		a = input("")
-		if("tran4sform" in str(a)):
-			fname = a[10:]
-			c.transform(fname)
+	c.transform("test.txt")
+	c.connect()

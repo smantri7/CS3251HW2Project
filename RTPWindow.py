@@ -25,3 +25,4 @@ class RTPWindow:
 
 	def setList(self,pos,val):
 		self.rList[pos] = val
+		
