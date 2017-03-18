@@ -40,8 +40,8 @@ public class RTPServer {
 		filename = "bufferFile";
 		packetSendBuffer = new ArrayList<RTPPacket>();
 		packetReceivedBuffer = new ArrayList<RTPPacket>();
-		recvSocket = new DatagramSocket(srcPort);
-		sendSocket = new DatagramSocket(srcPort + 1);
+		recvSocket = new DatagramSocket(4000);
+		sendSocket = new DatagramSocket(4001);
 	}
 
 	public void sendRTPPacket(byte[] data) throws IOException {

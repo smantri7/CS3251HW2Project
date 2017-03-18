@@ -52,8 +52,8 @@ class RTPClient:
 		#create socket, bind, begin the sending process
 		sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 		sockRecv = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-		sock.bind((socket.gethostname(),int(self.portNum)))
-		sockRecv.bind((socket.gethostname(),int(self.portNum) + 1))
+		sock.bind((socket.gethostname(),2000)
+		sockRecv.bind((socket.gethostname(),2001)
 		#set the time out
 		sockRecv.settimeout(5)
 		#Before starting we need to get RTT with SYN bit
