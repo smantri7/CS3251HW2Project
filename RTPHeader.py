@@ -26,11 +26,11 @@ class RTPHeader:
 
 	def convertArray(self,headerBytes):
 		self.srcPort, self.dstPort, self.seqNum, self.windowSizeOffset, self.checksum, flags, self.timestamp = struct.unpack("!IIIIIII", headerBytes)
-		self.ack = ((rshift(flags,31)) & 0x1) != 0
-		self.nack = ((rshift(flags,30)) & 0x1) != 0
-		self.syn = ((rshift(flags,29)) & 0x1) != 0
-		self.fin = ((rshift(flags,28)) & 0x1) != 0
-		self.beg = ((rshift(flags,27)) & 0x1) != 0
+		self.ack = ((self.rshift(flags,31)) & 0x1) != 0
+		self.nack = ((self.rshift(flags,30)) & 0x1) != 0
+		self.syn = ((self.rshift(flags,29)) & 0x1) != 0
+		self.fin = ((self.rshift(flags,28)) & 0x1) != 0
+		self.beg = ((self.rshift(flags,27)) & 0x1) != 0
 
 
 	def rshift(self,val, n): 

@@ -6,7 +6,7 @@ from RTPHeader import RTPHeader
 from RTPPacket import RTPPacket
 import time
 import RTPWindow
-
+#networklab1 4000 5     #4000 5
 class RTPClient:
 	#constructor class that contains IP, portnumber, and the textfile name
 	def __init__(self,host,portNum,winSize):
@@ -52,8 +52,8 @@ class RTPClient:
 		#create socket, bind, begin the sending process
 		sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
 		sockRecv = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-		sock.bind((socket.gethostname(),2000)
-		sockRecv.bind((socket.gethostname(),2001)
+		sock.bind((socket.gethostname(),2000))
+		sockRecv.bind((socket.gethostname(),2001))
 		#set the time out
 		sockRecv.settimeout(5)
 		#Before starting we need to get RTT with SYN bit
@@ -64,13 +64,18 @@ class RTPClient:
 		pikmin = RTPPacket(h,0)
 		pikmin.getHeader().setseqNum(self.currSeqNum) #initial seq number of client
 		pikmin.getHeader().setChecksum(self.checksum(pikmin)) #checksum of packet
+
+		print("Sockets Updated.")
 		#Incase server crashes initially during 3-way handshake
 		#Client sends syn bit and initial seq number
 		#Client receives syn ack on, server init seq number
 		#Client sends ack for that
 		try:
+			print("Sending...")
 			sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
-			resSock,addr = sockRecv.recvfrom(4096)
+			print("Receiving...")
+			resSock = sockRecv.recvfrom(4096)
+			print("Connected!")
 		except Exception as e:
 			print(e)
 			print("Socket timed out. Server may have crashed.")
@@ -80,21 +85,22 @@ class RTPClient:
 		self.rtt = tfinal - tinit
 		sock.settimeout(self.rtt*2)
 		sockRecv.settimeout(self.rtt*2)
-		packet = stramToPacket(resSock[0])
-		if(packet.getHeader().getACK() is False or packet.getHeader().getseqNum() != (pikmin.getHeader().getseqNum() + 1)): #you also need to check for ack to the syn with an ack number that is the ISN+1
+		packet = self.streamToPacket(resSock[0])
+		if(packet.getHeader().getACK() is False or packet.getHeader().getSYN() is False or packet.getHeader().getseqNum() != (pikmin.getHeader().getseqNum() + 1)): #you also need to check for ack to the syn with an ack number that is the ISN+1
 			print("Connection Refused! Try again!")
 			return
 		#Make sure to ACK the new
 		try:
-			h = RTPHeader(int(self.portNum) + 1,self.portNum,0,0)
+			h = RTPHeader(2000,int(self.portNum) + 1,0,0)
 			h.setACK(True)
-			pikmin = RTPPacket(self.host,self.portNum,h,0)
-			sock.sendto(pikmin.toByteStream(),(self.host,self.portNum))
+			pikmin = RTPPacket(h,0)
+			sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
 		except Exception as e:
 			print("Connection Refused sending Error. Try again!")
 			return
-		send(sock)
-		receive(sockRecv)
+		print("Connection Successful!")
+		#send(sock)
+		#receive(sockRecv)
 		#Now we can start the true connection
 		#################################################
 
@@ -227,6 +233,7 @@ class RTPClient:
 
 	def checksum(self, aPacket): # dude use CRC32. or not. we just need to decide on one
 		crc = zlib.crc32(bytes(aPacket.getData())) & 0xffffffff
+		print("Checksum: ",crc)
 		return crc
 
 if __name__ == "__main__":

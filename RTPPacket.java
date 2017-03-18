@@ -44,6 +44,25 @@ public class RTPPacket {
 		
 		ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 		try {
+			//outputStream.write(headerByteArray);
+			if (data != null) {
+				outputStream.write(data);
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		packetByteArray = outputStream.toByteArray();
+		return packetByteArray;
+	}
+
+	public byte[] getEntireByteArray() {
+		byte[] packetByteArray;
+		byte[] headerByteArray;
+		
+		headerByteArray = header.getHeaderByteArray();
+		
+		ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+		try {
 			outputStream.write(headerByteArray);
 			if (data != null) {
 				outputStream.write(data);
@@ -72,10 +91,10 @@ public class RTPPacket {
 		
 		byte[] packetByteArray = getPacketByteArray();
 
-		packetByteArray[16] = 0x00;
-		packetByteArray[17] = 0x00;
-		packetByteArray[18] = 0x00;
-		packetByteArray[19] = 0x00;
+		//packetByteArray[16] = 0x00;
+		//packetByteArray[17] = 0x00;
+		//packetByteArray[18] = 0x00;
+		//packetByteArray[19] = 0x00;
 
 		checksum.update(packetByteArray);
 		checksumValue = (int) checksum.getValue();

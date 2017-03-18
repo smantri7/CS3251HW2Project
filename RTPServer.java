@@ -40,8 +40,8 @@ public class RTPServer {
 		filename = "bufferFile";
 		packetSendBuffer = new ArrayList<RTPPacket>();
 		packetReceivedBuffer = new ArrayList<RTPPacket>();
-		recvSocket = new DatagramSocket(4000);
-		sendSocket = new DatagramSocket(4001);
+		recvSocket = new DatagramSocket(srcPort);
+		sendSocket = new DatagramSocket(srcPort + 1);
 	}
 
 	public void sendRTPPacket(byte[] data) throws IOException {
@@ -51,7 +51,7 @@ public class RTPServer {
 		sendPacket = new RTPPacket(sendHeader, data);
 		sendPacket.updateChecksum();
 
-		data = sendPacket.getPacketByteArray();
+		data = sendPacket.getEntireByteArray();
 
 		sendSocket.send(new DatagramPacket(data, data.length, dstAddress, dstPort));
 	}
@@ -79,13 +79,30 @@ public class RTPServer {
 			DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER], MAXBUFFER);
 			try {
 				recvSocket.receive(packet);
+				System.out.println("Received a packet!");
 				byte[] receivedData = new byte[packet.getLength()];
+				System.out.println(receivedData.length);
 				receivedData = Arrays.copyOfRange(packet.getData(), 0, packet.getLength());
 
 				RTPPacket receivedRTPPacket = new RTPPacket(receivedData);
 				RTPHeader receivedHeader = receivedRTPPacket.getHeader();
-
+				System.out.println(receivedHeader.isSYN());
 				//Validate Checksum
+				System.out.println(receivedHeader.getChecksum());
+				System.out.println(receivedRTPPacket.calculateChecksum());
+				//put incoming packets into receive buffer
+				if (state == 3) {
+					packetReceivedBuffer.add(receivedRTPPacket);
+					RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
+					responseHeader.setACK(true);
+					responseHeader.setseqNum(receivedHeader.getseqNum() + 1);
+					RTPPacket responsePacket = new RTPPacket(responseHeader, null);
+					responsePacket.updateChecksum();
+
+					byte[] packetBytes = responsePacket.getEntireByteArray();
+					sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), 2001);
+					sendSocket.send(sendPacket);
+				}
 				if (receivedHeader.getChecksum() == receivedRTPPacket.calculateChecksum()) {
 					//Handshake
 					if (state == 1 && receivedHeader.isSYN()) {
@@ -94,31 +111,19 @@ public class RTPServer {
 						RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
 						responseHeader.setSYN(true);
 						responseHeader.setACK(true);
+						responseHeader.setseqNum(receivedHeader.getseqNum() + 1);
 						RTPPacket responsePacket = new RTPPacket(responseHeader, null);
 						responsePacket.updateChecksum();
 
-						byte[] packetBytes = responsePacket.getPacketByteArray();
-						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
+						byte[] packetBytes = responsePacket.getEntireByteArray();
+						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
+						System.out.println("Sending a packet!");
 						sendSocket.send(sendPacket);
 						state = 2;
 					}
 					//3rd part of handshake
 					if (state == 2 && receivedHeader.isACK()) {
 						state = 3;
-					}
-
-					//put incoming packets into receive buffer
-					if (state == 3) {
-						packetReceivedBuffer.add(receivedRTPPacket);
-						RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
-						responseHeader.setACK(true);
-						responseHeader.setseqNum(receivedHeader.getseqNum());
-						RTPPacket responsePacket = new RTPPacket(responseHeader, null);
-						responsePacket.updateChecksum();
-
-						byte[] packetBytes = responsePacket.getPacketByteArray();
-						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, recvPacket.getAddress(), recvPacket.getPort());
-						sendSocket.send(sendPacket);
 					}
 
 					//fin indicates end of file
@@ -183,7 +188,7 @@ public class RTPServer {
 						rtpPacket.updateChecksum();
 
 						packetNumber += 1;
-						sendRTPPacket(rtpPacket.getPacketByteArray());
+						sendRTPPacket(rtpPacket.getEntireByteArray());
 					}
 				}
 				try {
@@ -211,7 +216,7 @@ public class RTPServer {
 			rtpHeader.setseqNum(sequenceNumber++);
 			rtpPacket = new RTPPacket(rtpHeader, packetBytes);
 			rtpPacket.updateChecksum();
-			sendRTPPacket(rtpPacket.getPacketByteArray());
+			sendRTPPacket(rtpPacket.getEntireByteArray());
 			
 			
 			fileInputStream.close();
