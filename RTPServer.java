@@ -10,6 +10,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 
 public class RTPServer  {
@@ -25,13 +26,14 @@ public class RTPServer  {
 	private InetAddress dstAddress;
 	private int srcPort;
 	private int threshold;
-	private int sequenceNumber;
 	private String filename;
 
 	private ArrayList<RTPPacket> packetSendBuffer;
 	private ArrayList<RTPPacket> packetReceivedBuffer;
+	private ArrayList<RTPPacket> packetList;
 
 	private int wSize;
+	private int rtt = 1;
 
 	private int packetNum = 0;
 
@@ -46,9 +48,10 @@ public class RTPServer  {
 		packetReceivedBuffer = new ArrayList<RTPPacket>();
 		recvSocket = new DatagramSocket(srcPort);
 		sendSocket = new DatagramSocket(srcPort + 1);
+		recvSocket.setSoTimeout(1000);
 	}
 
-	public void sendRTPPacket(byte[] data) throws IOException {
+	public void sendRTPPacket(byte[] data, int sequenceNumber) throws IOException {
 		RTPPacket sendPacket;
 		RTPHeader sendHeader = new RTPHeader(srcPort, dstPort, sequenceNumber);
 
@@ -56,18 +59,35 @@ public class RTPServer  {
 		sendPacket.updateChecksum();
 
 		data = sendPacket.getEntireByteArray();
-
+		System.out.printf("Sent packet: %d\n",sequenceNumber);
 		sendSocket.send(new DatagramPacket(data, data.length, dstAddress, dstPort));
 	}
 
-	public void createFileFromByteArray(String filename, byte[] fileByteArray) {
+	public void createFileFromByteArray(byte[] fileByteArray) {
+		packetList = new ArrayList<RTPPacket>();
+		String ans = new String(fileByteArray,StandardCharsets.UTF_8);
+		ans = ans.toUpperCase();
+		byte[] bytes = ans.getBytes(StandardCharsets.UTF_8);
+		int seq = 0;
+		for(int i = 0; i < bytes.length; i += MAXBUFFER) {
+			byte[] packetBytes = null;
+			if(i + MAXBUFFER >= bytes.length) {
+				packetBytes = new byte[bytes.length % MAXBUFFER];
+			} else {
+				packetBytes = new byte[MAXBUFFER];
+			}
+			RTPHeader getsomehead = new RTPHeader();
+			getsomehead.setseqNum(seq);
+			//System.out.println(getsomehead.getseqNum());
+			RTPPacket cuck = new RTPPacket(getsomehead,packetBytes);
+			packetList.add(cuck);
+			seq++;
+		}
 		try {
-			FileOutputStream fileOutputStream = new FileOutputStream(filename);
-			fileOutputStream.write(fileByteArray);
-		} catch (FileNotFoundException e) {
-			System.out.println("File was not found.");
-		} catch (IOException e) {
-			System.out.println("Error writing file.");
+			System.out.println("Trying to send packets...");
+			sendFilePackets();
+		} catch(Exception e) {
+			System.out.println(e.getMessage());
 		}
 	}
 
@@ -84,10 +104,6 @@ public class RTPServer  {
 			packetNum += 1;
 			try {
 				recvSocket.receive(packet);
-				System.out.println("Received a packet!");
-				if(packetNum == 1413) {
-					System.out.println(new String(packetReceivedBuffer.get(5).getData()));
-				}
 				byte[] receivedData = new byte[packet.getLength()];
 				receivedData = Arrays.copyOfRange(packet.getData(), 0, packet.getLength());
 
@@ -98,6 +114,18 @@ public class RTPServer  {
 				//System.out.println(receivedHeader.getChecksum());
 				//System.out.println(receivedRTPPacket.calculateChecksum());
 				//put incoming packets into receive buffer
+				//fin indicates end of file
+				if (state == 3 && receivedHeader.isFIN()) {
+					ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+					for (RTPPacket p : packetReceivedBuffer) {
+						outputStream.write(p.getData());
+					}
+					System.out.println("Switching to receive...");
+					createFileFromByteArray(outputStream.toByteArray());
+					packetReceivedBuffer.clear();
+					state = 1;	
+					//server send state//
+				}
 				if (state == 3) {
 					packetReceivedBuffer.add(receivedRTPPacket);
 					RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
@@ -108,8 +136,8 @@ public class RTPServer  {
 
 					byte[] packetBytes = responsePacket.getEntireByteArray();
 					sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
-					System.out.println("Sent ACK packet in state 3");
-					System.out.printf("Seq number is: %d",responsePacket.getHeader().getseqNum());
+					//System.out.println("Sent ACK packet in state 3");
+					//System.out.printf("Seq number is: %d",responsePacket.getHeader().getseqNum());
 					sendSocket.send(sendPacket);
 				}
 				if (receivedHeader.getChecksum() == receivedRTPPacket.calculateChecksum()) {
@@ -133,16 +161,6 @@ public class RTPServer  {
 					if (state == 2 && receivedHeader.isACK()) {
 						state = 3;
 					}
-
-					//fin indicates end of file
-					if (state == 3 && receivedHeader.isFIN()) {
-						ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-						for (RTPPacket p : packetReceivedBuffer) {
-							outputStream.write(p.getData());
-						}
-						createFileFromByteArray(filename, outputStream.toByteArray());
-						packetReceivedBuffer.clear();	
-					}
 				}
 
 
@@ -161,79 +179,98 @@ public class RTPServer  {
 
 	//TODO: IMPLEMENT GO BACK N
 	//need more states? probably
-	public void sendFilePackets(String fName) throws Exception {
-		File file = new File(fName);
-		
-		byte[] byteArray = new byte[(int) file.length()];
-		
+	public void sendFilePackets() throws Exception {
+		RTPWindow window = new RTPWindow(0,0,packetList.size());
+		if(packetList.size() < wSize) {
+			window.setMax(packetList.size() - 1);
+		} else {
+			window.setMax(this.wSize - 1);
+		}
 		try {
-			FileInputStream fileInputStream = new FileInputStream(file);
-			fileInputStream.read(byteArray);
-
-			//make uppercase or some shit
-			
-			byte[] packetBytes;
-			
-			if (byteArray.length < MAXBUFFER) {
-				packetBytes = new byte[byteArray.length];
-			} else {
-				packetBytes = new byte[MAXBUFFER];
-			}
-			
-			int packetNumber = 0;
-			RTPHeader rtpHeader = new RTPHeader(srcPort, dstPort, packetNumber);
-			RTPPacket rtpPacket;
-
 			//Todo go back n
 			boolean finished = false;
+			int tries = 0;
 			while(!finished) {
 				//send N packets
-				for (int i = 0; i < byteArray.length; i++) {
-					packetBytes[i] = byteArray[(packetNumber * (MAXBUFFER - 1)) + i];
-					if (i % MAXBUFFER == 0 && !(i < MAXBUFFER)) {
-						rtpHeader.setseqNum(sequenceNumber++);
-						rtpPacket = new RTPPacket(rtpHeader, packetBytes);
-						rtpPacket.updateChecksum();
-
-						packetNumber += 1;
-						sendRTPPacket(rtpPacket.getEntireByteArray());
+				for (int i = window.getMin(); i < window.getMax() + 1; i++) {
+					RTPPacket constantine = packetList.get(i);
+					//constantine.getHeader().setTimestamp((int) ((System.currentTimeMillis()/1000) % 3600));
+					//System.out.println(constantine.getHeader().getseqNum());
+					sendRTPPacket(constantine.getEntireByteArray(),constantine.getHeader().getseqNum());
+				}
+				boolean wait = true;
+				while(wait) {
+					try {
+						DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
+						recvSocket.receive(packet);
+						byte[] receivedData = new byte[packet.getLength()];
+						receivedData = Arrays.copyOfRange(packet.getData(),0,packet.getLength());
+						RTPPacket receivedP = new RTPPacket(receivedData);
+						RTPHeader receivedH = receivedP.getHeader();
+						if(receivedH.isACK()) { //TIMEOUT IMPLEMENTATION
+						//we want to update window pointers
+							tries = 0; //reset
+							if(packetList.size() == window.getMax() + 1) {
+								System.out.println("Finished sending!");
+								finished = true;
+								RTPHeader rtpHeader = new RTPHeader();
+								rtpHeader.setFIN(true);
+								rtpHeader.setseqNum(packetList.size());
+								rtpHeader.setTimestamp((int) ((System.currentTimeMillis()/1000) % 3600));
+								RTPPacket rtpPacket = new RTPPacket(rtpHeader, null);
+								rtpPacket.updateChecksum();
+								sendRTPPacket(rtpPacket.getEntireByteArray(),rtpPacket.getHeader().getseqNum());
+								wait = false;
+								finished = true;
+								System.out.println("Go back to listen state?");
+								break;
+							}
+							System.out.println("Updating window...");
+							wait = updateWindowSend(receivedP, window);
+						} else if(receivedP.getHeader().isNACK()) { //TIMEOUT IMPLEMENTATION
+							tries++;
+							System.out.println("Timed out. Resending...");
+							wait = false;
+							if(tries == 3) {
+								System.out.println("Client may have crashed...");
+								return;
+							}
+						} else {
+							System.out.println("Waiting...");
+						}
+					} catch(Exception e) {
+						System.out.println(e.getMessage());
+						return;
 					}
 				}
-				try {
-					DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
-					recvSocket.receive(packet);
-					byte[] receivedData = new byte[packet.getLength()];
-					receivedData = Arrays.copyOfRange(packet.getData(),0,packet.getLength());
-					RTPPacket receivedP = new RTPPacket(receivedData);
-					RTPHeader receivedH = receivedP.getHeader();
-					if(receivedH.getChecksum() == receivedP.calculateChecksum()) {
-
-					} else {
-						//update the window pointers?
-						//add received packets to file?
-					}
-				} catch(Exception e) {
-					System.out.println(e.getMessage());
-					return;
-				}
-
 			}
+		} catch(Exception e) {
+			System.out.println(e.getMessage());
+			return;
+		}			
+	}
 
-			
-			rtpHeader.setFIN(true);
-			rtpHeader.setseqNum(sequenceNumber++);
-			rtpPacket = new RTPPacket(rtpHeader, packetBytes);
-			rtpPacket.updateChecksum();
-			sendRTPPacket(rtpPacket.getEntireByteArray());
-			
-			
-			fileInputStream.close();
-		} catch (FileNotFoundException e) {
-			System.out.println("File was not found.");		
-		} catch (IOException e) {
-			System.out.println("Error reading file.");
-			
+	public boolean updateWindowSend(RTPPacket packet, RTPWindow window) {
+		for(int i = window.getMin(); i < window.getMax() + 1; i++) {
+			if(packet.getHeader().getseqNum() == packetList.get(i).getHeader().getseqNum()) {
+				window.setrList(i,true);
+			}
 		}
+		int newMin = 0;
+		for(int x = 0; x < packetList.size() - 1; x++) {
+			if(window.getrList()[x]) {
+				newMin++;
+			}
+		}
+		int oldMin = window.getMin();
+		window.setMin(newMin);
+		int max = (newMin + wSize > packetList.size()) ? packetList.size() - 1 : newMin + wSize;
+		window.setMax(max);
+		return (oldMin == newMin) ? true : false;
+	}
+
+	public boolean timeout(RTPPacket packet) {
+		return (((int) ((System.currentTimeMillis()/1000) % 3600)) - packet.getHeader().getTimestamp()) > 2*rtt;
 	}
 
 	public static void main(String args[]) throws Exception {
