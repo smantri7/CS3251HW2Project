@@ -98,20 +98,7 @@ public class RTPServer  {
 				//System.out.println(receivedHeader.getChecksum());
 				//System.out.println(receivedRTPPacket.calculateChecksum());
 				//put incoming packets into receive buffer
-				if (state == 3) {
-					packetReceivedBuffer.add(receivedRTPPacket);
-					RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
-					responseHeader.setACK(true);
-					responseHeader.setseqNum(receivedHeader.getseqNum() + 1);
-					RTPPacket responsePacket = new RTPPacket(responseHeader, null);
-					responsePacket.updateChecksum();
-
-					byte[] packetBytes = responsePacket.getEntireByteArray();
-					sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
-					System.out.println("Sent ACK packet in state 3");
-					System.out.printf("Seq number is: %d",responsePacket.getHeader().getseqNum());
-					sendSocket.send(sendPacket);
-				}
+				
 				if (receivedHeader.getChecksum() == receivedRTPPacket.calculateChecksum()) {
 					//Handshake
 					if (state == 1 && receivedHeader.isSYN()) {
@@ -128,14 +115,23 @@ public class RTPServer  {
 						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
 						sendSocket.send(sendPacket);
 						state = 2;
-					}
-					//3rd part of handshake
-					if (state == 2 && receivedHeader.isACK()) {
+					} else if (state == 2 && receivedHeader.isACK()) {
 						state = 3;
-					}
+					} else if (state == 3) {
+						packetReceivedBuffer.add(receivedRTPPacket);
+						RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
+						responseHeader.setACK(true);
+						responseHeader.setseqNum(receivedHeader.getseqNum() + 1);
+						RTPPacket responsePacket = new RTPPacket(responseHeader, null);
+						responsePacket.updateChecksum();
 
-					//fin indicates end of file
-					if (state == 3 && receivedHeader.isFIN()) {
+						byte[] packetBytes = responsePacket.getEntireByteArray();
+						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
+						System.out.println("Sent ACK packet in state 3");
+						System.out.printf("Seq number is: %d",responsePacket.getHeader().getseqNum());
+						sendSocket.send(sendPacket);
+					} else if (state == 3 && receivedHeader.isFIN()) {
+						//fin indicates end of file
 						ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 						for (RTPPacket p : packetReceivedBuffer) {
 							outputStream.write(p.getData());
@@ -211,6 +207,7 @@ public class RTPServer  {
 					} else {
 						//update the window pointers?
 						//add received packets to file?
+						//^What? This is done in listen() 121
 					}
 				} catch(Exception e) {
 					System.out.println(e.getMessage());
