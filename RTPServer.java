@@ -176,7 +176,8 @@ public class RTPServer  {
 				packetBytes = new byte[MAXBUFFER];
 			}
 			
-			int packetNumber = 0;
+			int lastUnacked = 0; //Is this the lastUnacked var? We can use lastUnacked+4 for window end
+			int lastSent = 0;
 			RTPHeader rtpHeader = new RTPHeader(srcPort, dstPort, packetNumber);
 			RTPPacket rtpPacket;
 
@@ -184,7 +185,10 @@ public class RTPServer  {
 			boolean finished = false;
 			while(!finished) {
 				//send N packets
-				for (int i = 0; i < byteArray.length; i++) {
+				//This should be a while loop checking for unsent packets in the send window
+				//because the sender will not send 5 packets at a time. (Packets are sent as
+				//the window is updated)
+				while ((i < byteArray.length) && (lastSent < lastUnacked + 4)) {
 					packetBytes[i] = byteArray[(packetNumber * (MAXBUFFER - 1)) + i];
 					if (i % MAXBUFFER == 0 && !(i < MAXBUFFER)) {
 						rtpHeader.setseqNum(sequenceNumber++);
@@ -193,8 +197,10 @@ public class RTPServer  {
 
 						packetNumber += 1;
 						sendRTPPacket(rtpPacket.getEntireByteArray());
+						lastSent++;
 					}
 				}
+
 				try {
 					DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
 					recvSocket.receive(packet);
@@ -205,16 +211,14 @@ public class RTPServer  {
 					if(receivedH.getChecksum() == receivedP.calculateChecksum()) {
 						//Is this receive functionality? Why is this in sendFilePackets?
 						//If this is for checking acks, you don't need to checksum the data
-						//Timer should reset whenever the lastAcked is updated
+						//Timer should reset whenever the lastUnacked is updated
 						//Send all available packets whenever send window is updated
 						//Need Global timer
-						//Need Global lastAcked var
-						//make update lastAcked method
+						//Need Global lastUnacked var
+						//UPDATE LASTUNACKED HERE
 					} else {
 						//update the window pointers?
 						//add received packets to file?
-						//^What? This is done in listen() 121
-						//WHAT
 					}
 				} catch(Exception e) {
 					System.out.println(e.getMessage());
