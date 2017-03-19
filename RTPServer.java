@@ -156,9 +156,7 @@ public class RTPServer  {
 						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
 						sendSocket.send(sendPacket);
 						state = 2;
-					}
-					//3rd part of handshake
-					if (state == 2 && receivedHeader.isACK()) {
+					} else if (state == 2 && receivedHeader.isACK()) {
 						state = 3;
 					}
 				}
