@@ -48,19 +48,18 @@ public class RTPServer  {
 		packetReceivedBuffer = new ArrayList<RTPPacket>();
 		recvSocket = new DatagramSocket(srcPort);
 		sendSocket = new DatagramSocket(srcPort + 1);
-		recvSocket.setSoTimeout(1000);
 	}
 
 	public void sendRTPPacket(byte[] data, int sequenceNumber) throws IOException {
-		RTPPacket sendPacket;
-		RTPHeader sendHeader = new RTPHeader(srcPort, dstPort, sequenceNumber);
-
-		sendPacket = new RTPPacket(sendHeader, data);
-		sendPacket.updateChecksum();
-
-		data = sendPacket.getEntireByteArray();
+		RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
+		responseHeader.setACK(true);
+		responseHeader.setseqNum(sequenceNumber);
+		RTPPacket responsePacket = new RTPPacket(responseHeader, data);
+		responsePacket.updateChecksum();
+		byte[] packetBytes = responsePacket.getEntireByteArray();
+		sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
 		System.out.printf("Sent packet: %d\n",sequenceNumber);
-		sendSocket.send(new DatagramPacket(data, data.length, dstAddress, dstPort));
+		sendSocket.send(sendPacket);
 	}
 
 	public void createFileFromByteArray(byte[] fileByteArray) {
@@ -68,7 +67,7 @@ public class RTPServer  {
 		String ans = new String(fileByteArray,StandardCharsets.UTF_8);
 		ans = ans.toUpperCase();
 		byte[] bytes = ans.getBytes(StandardCharsets.UTF_8);
-		int seq = 0;
+		int seq = 100;
 		for(int i = 0; i < bytes.length; i += MAXBUFFER) {
 			byte[] packetBytes = null;
 			if(i + MAXBUFFER >= bytes.length) {
@@ -205,6 +204,7 @@ public class RTPServer  {
 						receivedData = Arrays.copyOfRange(packet.getData(),0,packet.getLength());
 						RTPPacket receivedP = new RTPPacket(receivedData);
 						RTPHeader receivedH = receivedP.getHeader();
+						System.out.println(receivedH.getseqNum());
 						if(receivedH.isACK()) { //TIMEOUT IMPLEMENTATION
 						//we want to update window pointers
 							tries = 0; //reset
@@ -223,7 +223,6 @@ public class RTPServer  {
 								System.out.println("Go back to listen state?");
 								break;
 							}
-							System.out.println("Updating window...");
 							wait = updateWindowSend(receivedP, window);
 						} else if(receivedP.getHeader().isNACK()) { //TIMEOUT IMPLEMENTATION
 							tries++;
@@ -250,21 +249,22 @@ public class RTPServer  {
 
 	public boolean updateWindowSend(RTPPacket packet, RTPWindow window) {
 		for(int i = window.getMin(); i < window.getMax() + 1; i++) {
-			if(packet.getHeader().getseqNum() == packetList.get(i).getHeader().getseqNum()) {
+			if(packet.getHeader().getseqNum() >= packetList.get(i).getHeader().getseqNum()) {
 				window.setrList(i,true);
 			}
 		}
-		int newMin = 0;
-		for(int x = 0; x < packetList.size() - 1; x++) {
-			if(window.getrList()[x]) {
-				newMin++;
+		boolean move = true;
+		for(int x = window.getMin(); x < window.getMax(); x++) {
+			if(!window.getrList()[x]) {
+				move = false;
 			}
 		}
-		int oldMin = window.getMin();
-		window.setMin(newMin);
-		int max = (newMin + wSize > packetList.size()) ? packetList.size() - 1 : newMin + wSize;
-		window.setMax(max);
-		return (oldMin == newMin) ? true : false;
+		if(move) {
+			window.setMin(window.getMin() + wSize + 1);
+			int max = (window.getMin() + wSize > packetList.size()) ? packetList.size() - 1 : window.getMin() + wSize;
+			window.setMax(max);
+		}
+		return !move;
 	}
 
 	public boolean timeout(RTPPacket packet) {
