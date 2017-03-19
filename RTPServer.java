@@ -203,11 +203,18 @@ public class RTPServer  {
 					RTPPacket receivedP = new RTPPacket(receivedData);
 					RTPHeader receivedH = receivedP.getHeader();
 					if(receivedH.getChecksum() == receivedP.calculateChecksum()) {
-
+						//Is this receive functionality? Why is this in sendFilePackets?
+						//If this is for checking acks, you don't need to checksum the data
+						//Timer should reset whenever the lastAcked is updated
+						//Send all available packets whenever send window is updated
+						//Need Global timer
+						//Need Global lastAcked var
+						//make update lastAcked method
 					} else {
 						//update the window pointers?
 						//add received packets to file?
 						//^What? This is done in listen() 121
+						//WHAT
 					}
 				} catch(Exception e) {
 					System.out.println(e.getMessage());
