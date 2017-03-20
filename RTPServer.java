@@ -15,7 +15,7 @@ import java.util.*;
 
 public class RTPServer  {
 	private static final int MAXBUFFER = 1000;
-	private static final int MAXRECV = 1030;
+	private static final int MAXRECV = 1028;
 	private DatagramSocket recvSocket;
 	private DatagramSocket sendSocket;
 
@@ -58,7 +58,7 @@ public class RTPServer  {
 		responsePacket.updateChecksum();
 		byte[] packetBytes = responsePacket.getEntireByteArray();
 		sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
-		System.out.printf("Sent packet: %d\n",sequenceNumber);
+		//System.out.printf("Sent packet: %d\n",sequenceNumber);
 		sendSocket.send(sendPacket);
 	}
 
@@ -67,7 +67,7 @@ public class RTPServer  {
 		String ans = new String(fileByteArray,StandardCharsets.UTF_8);
 		ans = ans.toUpperCase();
 		byte[] bytes = ans.getBytes(StandardCharsets.UTF_8);
-		int seq = 100;
+		int seq = 0;
 		for(int i = 0; i < bytes.length; i += MAXBUFFER) {
 			byte[] packetBytes = null;
 			if(i + MAXBUFFER >= bytes.length) {
@@ -174,6 +174,18 @@ public class RTPServer  {
 		}
 	}
 
+
+	private void printWaitStatus(RTPWindow window) {
+		int waitCounter = 0;
+		String waitString = "";
+		for (int i = 0; i < window.getrList().length; i++) {
+			if (window.getrList()[i] == false) {
+				waitCounter++;
+				waitString += "" + i + ",";
+			}
+		}
+		System.out.println("waitCounter: " + waitCounter + " waitString: " + waitString);
+	}
 	//TODO: IMPLEMENT GO BACK N
 	//need more states? probably
 	public void sendFilePackets() throws Exception {
@@ -189,7 +201,7 @@ public class RTPServer  {
 			int tries = 0;
 			while(!finished) {
 				//send N packets
-				for (int i = window.getMin(); i < window.getMax() + 1; i++) {
+				for (int i = window.getMin(); i < (int) (Math.min(window.getMax() + 1, packetList.size() - 1)); i++) {
 					RTPPacket constantine = packetList.get(i);
 					//constantine.getHeader().setTimestamp((int) ((System.currentTimeMillis()/1000) % 3600));
 					//System.out.println(constantine.getHeader().getseqNum());
@@ -198,6 +210,7 @@ public class RTPServer  {
 				boolean wait = true;
 				while(wait) {
 					try {
+						System.out.println("waiting...");
 						DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
 						recvSocket.receive(packet);
 						byte[] receivedData = new byte[packet.getLength()];
@@ -206,8 +219,12 @@ public class RTPServer  {
 						RTPHeader receivedH = receivedP.getHeader();
 						System.out.println(receivedH.getseqNum());
 						if(receivedH.isACK()) { //TIMEOUT IMPLEMENTATION
+							if (receivedH.getseqNum() == 1413) {
+								System.out.println("i got the packet");
+							}
 						//we want to update window pointers
 							tries = 0; //reset
+							System.out.println("ps: " + packetList.size() + " wm: " + window.getMax());
 							if(packetList.size() == window.getMax() + 1) {
 								System.out.println("Finished sending!");
 								finished = true;
@@ -224,6 +241,7 @@ public class RTPServer  {
 								break;
 							}
 							wait = updateWindowSend(receivedP, window);
+							printWaitStatus(window);
 						} else if(receivedP.getHeader().isNACK()) { //TIMEOUT IMPLEMENTATION
 							tries++;
 							System.out.println("Timed out. Resending...");
@@ -236,31 +254,37 @@ public class RTPServer  {
 							System.out.println("Waiting...");
 						}
 					} catch(Exception e) {
+						System.out.println("caught exception 1");
+						e.printStackTrace();
 						System.out.println(e.getMessage());
 						return;
 					}
 				}
 			}
 		} catch(Exception e) {
+			System.out.println("caught exception 2");
+			e.printStackTrace();
 			System.out.println(e.getMessage());
 			return;
 		}			
+		System.out.println("Exited sendFilePackets");
 	}
 
 	public boolean updateWindowSend(RTPPacket packet, RTPWindow window) {
-		for(int i = window.getMin(); i < window.getMax() + 1; i++) {
+		int maxIndex = (int) (Math.min(window.getMax() + 1, packetList.size() - 1));
+		for(int i = window.getMin(); i < maxIndex; i++) {
 			if(packet.getHeader().getseqNum() >= packetList.get(i).getHeader().getseqNum()) {
 				window.setrList(i,true);
 			}
 		}
 		boolean move = true;
-		for(int x = window.getMin(); x < window.getMax(); x++) {
+		for(int x = window.getMin(); x < maxIndex; x++) {
 			if(!window.getrList()[x]) {
 				move = false;
 			}
 		}
 		if(move) {
-			window.setMin(window.getMin() + wSize + 1);
+			window.setMin(window.getMin() + wSize);
 			int max = (window.getMin() + wSize > packetList.size()) ? packetList.size() - 1 : window.getMin() + wSize;
 			window.setMax(max);
 		}
