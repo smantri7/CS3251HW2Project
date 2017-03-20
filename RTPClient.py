@@ -19,8 +19,12 @@ class RTPClient:
 		self.currSeqNum = 0
 
 	def streamToPacket(self,stream):
-		headerPart = bytearray(stream)[0:29] 
-		dataPart = bytearray(stream)[29:]
+		packetBytes = bytearray(stream)
+		headerPart = packetBytes[0:28] 
+		dataPart = packetBytes[28:1028]
+		#print("datapart type: " + str(type(dataPart)))
+		#print(str(len(headerPart)))
+		#print(str(headerPart))
 		header = RTPHeader(0,0,0,0)
 		header.convertArray(headerPart)
 		packet = RTPPacket(header,dataPart)
@@ -62,7 +66,7 @@ class RTPClient:
 
 		h = RTPHeader(int(self.portNum) + 1,self.portNum,0,0)
 		h.setSYN(True)
-		pikmin = RTPPacket(h,0)
+		pikmin = RTPPacket(h,bytearray(0))
 		pikmin.getHeader().setseqNum(self.currSeqNum) #initial seq number of client
 		pikmin.getHeader().setChecksum(self.checksum(pikmin)) #checksum of packet
 
@@ -72,7 +76,7 @@ class RTPClient:
 		#Client sends ack for that
 		try:
 			sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
-			resSock = sockRecv.recvfrom(4096)
+			resSock = sockRecv.recvfrom(1028)
 		except Exception as e:
 			print(e)
 			print("Socket timed out. Server may have crashed.")
@@ -88,7 +92,7 @@ class RTPClient:
 		try:
 			h = RTPHeader(2000,int(self.portNum) + 1,0,0)
 			h.setACK(True)
-			pikmin = RTPPacket(h,0)
+			pikmin = RTPPacket(h,bytearray(0))
 			sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
 		except Exception as e:
 			print("Connection Refused sending Error. Try again!")
@@ -125,7 +129,7 @@ class RTPClient:
 			#make sure that it doesn't timeout, otherwise server may have crashed
 			while(wait):
 				try:
-					packet = sockRecv.recvfrom(1030)
+					packet = sockRecv.recvfrom(1028)
 					#check if packet is data packet or ACK/NACK etc
 					packet = self.streamToPacket(packet[0])
 					#if packet has data we go into receive state. Otherwise we go back to send state
@@ -138,7 +142,7 @@ class RTPClient:
 							h = RTPHeader(0,0,0,0)
 							h.setFIN(True)
 							h.setTimestamp(int(time.time() % 3600))
-							p = RTPPacket(h,0)
+							p = RTPPacket(h,bytearray(0))
 							sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
 							break
 						wait = self.updateWindowSend(packet,window)
@@ -163,7 +167,7 @@ class RTPClient:
 		finished = False
 		while(not finished):
 			try:
-				p,addr = sockRecv.recvfrom(1030)
+				p,addr = sockRecv.recvfrom(1028)
 			except Exception as e:
 				print("Socket timed out. Server may have crashed.")
 				return
@@ -178,8 +182,9 @@ class RTPClient:
 				h = RTPHeader(0,0,0,0)
 				h.setNACK(True)
 				h.setTimestamp(int(time.time() % 3600))
-				print("Sent NACK!")
-				sock.sendto(RTPPacket(h,0).toByteStream(),(self.host,int(self.portNum)))
+				#print("Sent NACK!")
+				#print("incorrect packet: " + str(packet.getData()))
+				sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
 			else:
 				#packet received, check if we need to move the window or not
 				#take care of possible duplicates
@@ -199,7 +204,7 @@ class RTPClient:
 				h.setseqNum(packet.getHeader().getseqNum() + 1)
 				print("Sending: ",packet.getHeader().getseqNum() + 1)
 				print("Sent ACK!")
-				sock.sendto(RTPPacket(h,0).toByteStream(),(self.host,int(self.portNum)))
+				sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
 				#check if this is the final packet to receive
 				#otherwise add normally
 				#ready for next one. send syn
@@ -216,11 +221,11 @@ class RTPClient:
 			h.setFIN(True)
 			h.setTimestamp(int(time.time() % 3600))
 			h.setseqNum(len(self.packets) + 1)
-			endPacket = RTPPacket(h,0)
+			endPacket = RTPPacket(h,bytearray(0))
 			sock.sendto(endPacket.toByteStream(),(self.host,int(self.portNum)))
 		#receive disconnect
 			try:
-				packet = sockr.recvfrom(1030)
+				packet = sockr.recvfrom(1028)
 			except Exception as e:
 				tries += 1
 				if(tries == 3):
@@ -256,11 +261,15 @@ class RTPClient:
 		return (int(time.time() % 3600) - packet.getHeader().getTimestamp()) > 2*self.rtt
 	#Check if packet is corrupt
 	def checkCorrupt(self,expected,packet):
-		expected = self.checksum(packet)
-		return packet.getHeader().getChecksum() != expected
+		ei = int(expected)
+		pi = int(self.checksum(packet))
+		difference = ei - pi
+		#print(str(difference))
+		#print("ei: " + str(ei) + " pi: " + str(pi))
+		return int(packet.getHeader().getChecksum()) != int(expected)
 
 	def checksum(self, aPacket): # dude use CRC32. or not. we just need to decide on one
-		crc = zlib.crc32(bytes(aPacket.getData())) & 0xffffffff
+		crc = zlib.crc32(aPacket.getData()) & 0xffffffff
 		return crc
 
 if __name__ == "__main__":
