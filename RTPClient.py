@@ -5,6 +5,7 @@ import zlib
 from RTPHeader import RTPHeader
 from RTPPacket import RTPPacket
 import time
+import select
 from RTPWindow import RTPWindow
 #networklab1 4000 5     #4000 5
 class RTPClient:
@@ -48,8 +49,12 @@ class RTPClient:
 	#turns byte into strings	
 	def writeToFile(self,packList):
 		#TODO
-		f = open(self.textfile + "-received.txt",'a')
+		f = open(self.textfile[:-4] + "-received.txt",'a')
 		for p in packList:
+			print(p.getHeader().getseqNum())
+			if(p.getHeader().getseqNum() <= 5):
+				#print(p.getHeader().getseqNum())
+				print(str(p.getData()))
 			f.write(str(p.getData().decode('UTF-8')))
 		f.close()
 	#Starts up the client, and gives it the necessary information needed
@@ -160,11 +165,17 @@ class RTPClient:
 						return
 		print("Receiving...")
 		self.receive(sock,sockRecv)
-		#self.disconnect(sock,sockRecv)
+		self.disconnect(sock,sockRecv)
 	
 	def receive(self,sock,sockRecv):
+		if(len(self.packets) < int(self.winSize)):
+			self.winSize = len(self.packList)
+		self.empty_socket(sockRecv)
+		self.empty_socket(sock)
 		received = {}
 		finished = False
+		expectedSeqNum = 0
+		expectedPackets = []
 		while(not finished):
 			try:
 				p,addr = sockRecv.recvfrom(1028)
@@ -174,48 +185,62 @@ class RTPClient:
 				return
 				#check if packet is data packet or ACK/NACK etc
 				#send ACK
-			print("______________________________________")
 			packet = self.streamToPacket(p)
-			expected = packet.getHeader().getChecksum()
-			print(packet.getHeader().getFIN())
 			print("Received packet: ", packet.getHeader().getseqNum())
-			print(bytearray(packet.getHeader().getByteArray()))
-			print("______________________________________")
-			if(self.checkCorrupt(expected,packet)): #IMPLEMENT TIMEOUT
-				#packet is not accepted, send a nack
-				#drop window
-				h = RTPHeader(0,0,0,0)
-				h.setNACK(True)
-				h.setTimestamp(int(time.time() % 3600))
-				#print("Sent NACK!")
-				#print("incorrect packet: " + str(packet.getData()))
-				sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
-			else:
-				#packet received, check if we need to move the window or not
-				#take care of possible duplicates
-				#print(len(received))
-				if(packet.getHeader().getFIN()):
-					print("Got fin bit!")
-					finished = True;
-					break
-				else:
-					#drops duplicates
-					if(packet.getHeader().getseqNum() not in list(received.keys())):
-						received[packet.getHeader().getseqNum()] = packet
-
-				h = RTPHeader(0,0,0,0)
-				h.setACK(True)
-				h.setTimestamp(int(time.time() % 3600))
-				h.setseqNum(packet.getHeader().getseqNum() + 1)
-				print("Sending: ",packet.getHeader().getseqNum() + 1)
-				sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
-				#check if this is the final packet to receive
-				#otherwise add normally
-				#ready for next one. send syn
+			expectedPackets.append(packet)
+			if(packet.getHeader().getFIN()):
+				print("Got fin bit!")
+				finished = True;
+				break
+			if(len(expectedPackets) == int(self.winSize)):
+				print("Window Received!")
+				ans = self.checkPackets(expectedPackets,expectedSeqNum,received,sock)
+				received = ans[0]
+				expectedSeqNum = ans[1]
+				expectedPackets = []
+			#This function will check what to do with expected
 		print("Turning into file...")
-		received = sorted(list(received.values()),key=lambda x:x.getHeader().getseqNum(),reverse=True)
+		received = sorted(list(received.values()),key=lambda x:x.getHeader().getseqNum())
 		self.writeToFile(received)
 
+	def checkPackets(self,expectedPackets,expectedSeqNum,received,sock):
+		a = expectedSeqNum
+		expectedPackets = sorted(list(expectedPackets), key=lambda p:p.getHeader().getseqNum())
+		for packet in expectedPackets:
+			expected = packet.getHeader().getChecksum()
+			print("A: ",a)
+			print("Expected: ",packet.getHeader().getseqNum())
+			if(self.checkCorrupt(expected,packet) or a != packet.getHeader().getseqNum()): #IMPLEMENT TIMEOUT
+					#packet is not accepted, send a nack
+					#drop window
+
+					h = RTPHeader(0,0,0,0)
+					h.setNACK(True)
+					h.setTimestamp(int(time.time() % 3600))
+					print("Sent NACK!")
+					sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
+					return [received,expectedSeqNum]
+					#packet received, check if we need to move the window or not
+					#take care of possible duplicates
+					#print(len(received))
+			else:
+					#drops duplicates
+				if(packet.getHeader().getseqNum() not in list(received.keys())):
+					received[packet.getHeader().getseqNum()] = packet
+				a += 1
+		print("Window Accepted")
+		h = RTPHeader(0,0,0,0)
+		h.setACK(True)
+		h.setTimestamp(int(time.time() % 3600))
+		h.setseqNum(a + 1)
+		print("Sending ACK FOR: ",packet.getHeader().getseqNum() + 1)
+		sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
+		print("New A: ",a)
+		return [received, a]
+
+					#check if this is the final packet to receive
+					#otherwise add normally
+					#ready for next one. send syn
 	
 	def disconnect(self,sock,sockr):
 		tries = 0
@@ -275,6 +300,13 @@ class RTPClient:
 	def checksum(self, aPacket): # dude use CRC32. or not. we just need to decide on one
 		crc = zlib.crc32(aPacket.getData()) & 0xffffffff
 		return crc
+
+	def empty_socket(self,sock):
+		input = [sock]
+		while True:
+			inputready, o, e = select.select(input,[],[], 0.0)
+			if len(inputready)==0: break
+			for s in inputready: s.recv(1)
 
 if __name__ == "__main__":
 	c = RTPClient(sys.argv[1],sys.argv[2],sys.argv[3])

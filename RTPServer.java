@@ -14,7 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-public class RTPServer  {
+public class RTPServer {
 	private static final int MAXBUFFER = 1000;
 	private static final int MAXRECV = 1028;
 	private DatagramSocket recvSocket;
@@ -77,20 +77,22 @@ public class RTPServer  {
 		String ans = new String(fileByteArray,StandardCharsets.UTF_8);
 		ans = ans.toUpperCase();
 		byte[] bytes = ans.getBytes(StandardCharsets.UTF_8);
-		System.out.println(new String(bytes));
 		int seq = 0;
 		int i = 0;
+		byte[] packetBytes = new byte[MAXBUFFER];
 		while(i < bytes.length) {
-			byte[] packetBytes = new byte[MAXBUFFER];
+			//System.out.println(i);
+			packetBytes = new byte[MAXBUFFER];
 			if(i + MAXBUFFER > bytes.length) {
-				packetBytes = new byte[i % MAXBUFFER];
+				//System.out.println("Resetting array...");
+				packetBytes = new byte[bytes.length % MAXBUFFER];
 			}
+			//System.out.println("Packing bits..");
 			for(int pack = 0; pack < MAXBUFFER; pack++) {
 				if(i < bytes.length) {
 					packetBytes[pack] = bytes[i];
 					i++;
 				}
-			}
 			}
 			RTPHeader getsomehead = new RTPHeader();
 			getsomehead.setseqNum(seq);
@@ -132,11 +134,12 @@ public class RTPServer  {
 				//put incoming packets into receive buffer
 				//fin indicates end of file
 				if (state == 3 && receivedHeader.isFIN()) {
+					Collections.sort(packetReceivedBuffer);
 					ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
 					for (RTPPacket p : packetReceivedBuffer) {
 						outputStream.write(p.getData());
 					}
-					System.out.println("Switching to receive...");
+					System.out.println("Switching to send...");
 					createFileFromByteArray(outputStream.toByteArray());
 					packetReceivedBuffer.clear();
 					state = 1;	
@@ -176,8 +179,6 @@ public class RTPServer  {
 						state = 3;
 					}
 				}
-
-
 				// System.out.println(packet.getAddress() + " " + packet.getPort() + ": " + new String(packet.getData()));
 				// String packetText = new String(packet.getData(), "UTF-8").toUpperCase().trim();
 				// System.out.println(packetText);
@@ -206,6 +207,7 @@ public class RTPServer  {
 	//TODO: IMPLEMENT GO BACK N
 	//need more states? probably
 	public void sendFilePackets() throws Exception {
+		packetReceivedBuffer.clear();
 		RTPWindow window = new RTPWindow(0,0,packetList.size());
 		if(packetList.size() < wSize) {
 			window.setMax(packetList.size() - 1);
@@ -221,56 +223,54 @@ public class RTPServer  {
 				for (int i = window.getMin(); i < (int) (Math.min(window.getMax() + 1, packetList.size())); i++) {
 					RTPPacket constantine = packetList.get(i);
 					//constantine.getHeader().setTimestamp((int) ((System.currentTimeMillis()/1000) % 3600));
-					System.out.println(constantine.getHeader().getseqNum());
 					constantine.getHeader().setSYN(true);
-					System.out.println("Sent a packet");
-					sendRPacket(constantine.getEntireByteArray(),constantine.getHeader());
+					System.out.printf("Sent a packet: %d\n",constantine.getHeader().getseqNum());
+					sendRPacket(constantine.getPacketByteArray(),constantine.getHeader());
 				}
 				boolean wait = true;
 				while(wait) {
 					try {
-						System.out.println("waiting...");
+						//System.out.println("waiting...");
 						DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
 						recvSocket.receive(packet);
 						byte[] receivedData = new byte[packet.getLength()];
 						receivedData = Arrays.copyOfRange(packet.getData(),0,packet.getLength());
 						RTPPacket receivedP = new RTPPacket(receivedData);
 						RTPHeader receivedH = receivedP.getHeader();
-						System.out.println("Received ACK!");
-						System.out.println(receivedH.getseqNum());
-						System.out.println(receivedH.isSYN());
+						//System.out.println("Received ACK!");
+						//System.out.println(receivedH.getseqNum());
+						//System.out.println(receivedH.isSYN());
 						if(receivedH.isACK()) { //TIMEOUT IMPLEMENTATION
-							if (receivedH.getseqNum() == 1413) {
-								System.out.println("i got the packet");
-							}
 						//we want to update window pointers
 							tries = 0; //reset
-							System.out.println("ps: " + packetList.size() + " wm: " + window.getMax());
+							//System.out.println("ps: " + packetList.size() + " wm: " + window.getMax());
 							if(packetList.size() == window.getMax() + 1) {
 								System.out.println("Finished sending!");
 								finished = true;
 								RTPHeader rtpHeader = new RTPHeader();
 								rtpHeader.setFIN(true);
-								rtpHeader.setSYN(true);
+								//rtpHeader.setSYN(true);
 								rtpHeader.setseqNum(packetList.size());
 								//System.out.println(rtpHeader.getseqNum());
 								rtpHeader.setTimestamp((int) ((System.currentTimeMillis()/1000) % 3600));
 								RTPPacket rtpPacket = new RTPPacket(rtpHeader, null);
 								rtpPacket.updateChecksum();
 								//System.out.println(rtpPacket.getHeader().getChecksum());
-								System.out.println(new String(rtpPacket.getEntireByteArray()));
+								//System.out.println(new String(rtpPacket.getEntireByteArray()));
 								sendRPacket(rtpPacket.getEntireByteArray(),rtpPacket.getHeader());
 								wait = false;
 								finished = true;
 								System.out.println("Go back to listen state?");
 								break;
 							}
+							System.out.println(receivedP.getHeader().getseqNum());
+							System.out.println("Update window!");
 							wait = updateWindowSend(receivedP, window);
 							printWaitStatus(window);
 						} else if(receivedP.getHeader().isNACK()) { //TIMEOUT IMPLEMENTATION
 							tries++;
-							System.out.println("Timed out. Resending...");
 							wait = false;
+							System.out.println("Timed out. Resending...");
 							if(tries == 3) {
 								System.out.println("Client may have crashed...");
 								return;
@@ -312,8 +312,8 @@ public class RTPServer  {
 			}
 		}
 		if(move) {
-			window.setMin(window.getMin() + wSize + 1);
-			int max = (window.getMin() + wSize > packetList.size()) ? packetList.size() - 1 : window.getMin() + wSize;
+			window.setMin(window.getMin() + wSize);
+			int max = (window.getMax() + wSize > packetList.size()) ? packetList.size() - 1 : window.getMax() + wSize;
 			window.setMax(max);
 		}
 		return !move;
