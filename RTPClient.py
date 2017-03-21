@@ -169,13 +169,18 @@ class RTPClient:
 			try:
 				p,addr = sockRecv.recvfrom(1028)
 			except Exception as e:
+				print(e)
 				print("Socket timed out. Server may have crashed.")
 				return
 				#check if packet is data packet or ACK/NACK etc
 				#send ACK
+			print("______________________________________")
 			packet = self.streamToPacket(p)
 			expected = packet.getHeader().getChecksum()
+			print(packet.getHeader().getFIN())
 			print("Received packet: ", packet.getHeader().getseqNum())
+			print(bytearray(packet.getHeader().getByteArray()))
+			print("______________________________________")
 			if(self.checkCorrupt(expected,packet)): #IMPLEMENT TIMEOUT
 				#packet is not accepted, send a nack
 				#drop window
@@ -188,11 +193,11 @@ class RTPClient:
 			else:
 				#packet received, check if we need to move the window or not
 				#take care of possible duplicates
-				#print(packet.getHeader().getFIN())
 				#print(len(received))
 				if(packet.getHeader().getFIN()):
 					print("Got fin bit!")
 					finished = True;
+					break
 				else:
 					#drops duplicates
 					if(packet.getHeader().getseqNum() not in list(received.keys())):
@@ -203,13 +208,12 @@ class RTPClient:
 				h.setTimestamp(int(time.time() % 3600))
 				h.setseqNum(packet.getHeader().getseqNum() + 1)
 				print("Sending: ",packet.getHeader().getseqNum() + 1)
-				print("Sent ACK!")
 				sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
 				#check if this is the final packet to receive
 				#otherwise add normally
 				#ready for next one. send syn
 		print("Turning into file...")
-		received = sorted(received,key=lambda x:x.getHeader().getseqNum(),reverse=True)
+		received = sorted(list(received.values()),key=lambda x:x.getHeader().getseqNum(),reverse=True)
 		self.writeToFile(received)
 
 	
@@ -274,5 +278,5 @@ class RTPClient:
 
 if __name__ == "__main__":
 	c = RTPClient(sys.argv[1],sys.argv[2],sys.argv[3])
-	c.transform("test.txt")
+	c.transform("tests.txt")
 	c.connect()

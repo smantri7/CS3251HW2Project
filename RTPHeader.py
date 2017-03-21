@@ -7,7 +7,6 @@ class RTPHeader:
 		self.nack = False
 		self.syn = False
 		self.fin = False
-		self.beg = False
 		self.timestamp = 0
 		self.windowSizeOffset = 0
 		self.srcPort = int(srcPort)
@@ -20,7 +19,6 @@ class RTPHeader:
 		self.nack = False
 		self.syn = False
 		self.fin = False
-		self.beg = False 
 		self.timestamp = 0 
 		self.windowSizeOffset = 0
 
@@ -30,7 +28,6 @@ class RTPHeader:
 		self.nack = ((self.rshift(flags,30)) & 0x1) != 0
 		self.syn = ((self.rshift(flags,29)) & 0x1) != 0
 		self.fin = ((self.rshift(flags,28)) & 0x1) != 0
-		self.beg = ((self.rshift(flags,27)) & 0x1) != 0
 
 
 	def rshift(self,val, n): 
@@ -78,12 +75,6 @@ class RTPHeader:
 	def setFIN(self,boole):
 		self.fin = boole
 
-	def getBEG(self):
-		return self.beg
-
-	def setBEG(self,boole):
-		self.beg = boole
-
 	def getChecksum(self):
 		return self.checksum
 
@@ -95,7 +86,6 @@ class RTPHeader:
 		nackByte = 0 << 30
 		synByte = 0 << 29
 		finByte = 0 << 28
-		begByte = 0 << 27
 		if(self.ack):
 			ackByte = 1 << 31
 		if(self.nack):
@@ -104,9 +94,7 @@ class RTPHeader:
 			synByte = 1 << 29
 		if(self.fin):
 			finByte = 1 << 28
-		if(self.beg):
-			begByte = 1 << 27
-		flags = ackByte | nackByte | synByte | finByte | begByte
+		flags = ackByte | nackByte | synByte | finByte
 		# ans = bytes(self.srcPort) + bytes(self.dstPort) + bytes(self.seqNum) + bytes(self.windowSizeOffset) +  bytes(flags) + bytes(self.timestamp)
 		# ans = self.srcPort |
 		# return ans
