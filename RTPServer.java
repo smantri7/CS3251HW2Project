@@ -270,13 +270,18 @@ public class RTPServer {
 						} else if(receivedP.getHeader().isNACK()) { //TIMEOUT IMPLEMENTATION
 							tries++;
 							wait = false;
-							System.out.println("Timed out. Resending...");
+							System.out.println("NACK received. Resending...");
 							if(tries == 3) {
 								System.out.println("Client may have crashed...");
 								return;
 							}
 						} else {
-							System.out.println("Waiting...");
+							tries++;
+							System.out.println("Packet timed out. Resending...");
+							if(tries == 3) {
+								System.out.println("Client may have crashed...");
+								return;
+							}
 						}
 					} catch(Exception e) {
 						System.out.println("caught exception 1");
