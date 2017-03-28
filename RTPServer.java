@@ -133,6 +133,43 @@ public class RTPServer {
 				//System.out.println(receivedRTPPacket.calculateChecksum());
 				//put incoming packets into receive buffer
 				//fin indicates end of file
+				if (state == 4 && receivedHeader.isFIN()) {
+					System.out.println("Closing connection with the client...");
+					int tries = 0;
+					while(true) {
+						//Now we send the finACK
+						try {
+							RTPHeader rtpHeader = new RTPHeader();
+							rtpHeader.setTimestamp((int) ((System.currentTimeMillis()/1000) % 3600));
+							RTPPacket rtpPacket = new RTPPacket(rtpHeader, null);
+							rtpPacket.updateChecksum();
+							sendRPacket(rtpPacket.getEntireByteArray(),rtpPacket.getHeader());
+
+							//Now we receive the ACK from Client
+							DatagramPacket p = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
+							recvSocket.receive(p);
+							byte[] rd = new byte[p.getLength()];
+							rd = Arrays.copyOfRange(p.getData(),0,p.getLength());
+							RTPPacket rp = new RTPPacket(rd);
+							RTPHeader rh = rp.getHeader();
+							//receive the final ack. Close everything and sockets
+							if(rh.isACK()) {
+								System.out.println("Client closed...");
+								state = 1;
+								break;
+							}
+							//end the connection
+						} catch(Exception e) {
+							tries += 1;
+							if(tries == 3) {
+								System.out.println("Client may have crashed, forcibly ending connection");
+								state = 1;
+								break;
+							}
+							System.out.println("Error. Resending Fin bit...");
+						}
+					}
+				}
 				if (state == 3 && receivedHeader.isFIN()) {
 					Collections.sort(packetReceivedBuffer);
 					ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -263,7 +300,8 @@ public class RTPServer {
 								wait = false;
 								finished = true;
 								System.out.println("Go back to listen state?");
-								break;
+								state = 4;
+								listen();
 							}
 							System.out.println(receivedP.getHeader().getseqNum());
 							System.out.println("Update window!");

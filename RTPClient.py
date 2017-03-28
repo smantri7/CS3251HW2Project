@@ -167,11 +167,10 @@ class RTPClient:
 						return
 		print("Receiving...")
 		self.receive(sock,sockRecv)
-		self.disconnect(sock,sockRecv)
 	
 	def receive(self,sock,sockRecv):
 		if(len(self.packets) < int(self.winSize)):
-			self.winSize = len(self.packList)
+			self.winSize = len(self.packets)
 		self.empty_socket(sockRecv)
 		self.empty_socket(sock)
 		received = {}
@@ -204,6 +203,8 @@ class RTPClient:
 		print("Turning into file...")
 		received = sorted(list(received.values()),key=lambda x:x.getHeader().getseqNum())
 		self.writeToFile(received)
+		##TODO SET UP CASE TO SEE IF WE ARE DONE##
+		self.disconnect(sock,sockRecv)
 
 	def checkPackets(self,expectedPackets,expectedSeqNum,received,sock):
 		a = expectedSeqNum
@@ -251,23 +252,28 @@ class RTPClient:
 			h = RTPHeader(2000,int(self.portNum),0,0)
 			h.setFIN(True)
 			h.setTimestamp(int(time.time() % 3600))
-			h.setseqNum(len(self.packets) + 1)
 			endPacket = RTPPacket(h,bytearray(0))
 			sock.sendto(endPacket.toByteStream(),(self.host,int(self.portNum)))
 		#receive disconnect
 			try:
-				packet = sockr.recvfrom(1028)
+				ans,addr = sockr.recvfrom(1028)
+				print("Received!")
+				p = self.streamToPacket(ans)
+				if(p.getHeader().getACK()):
+					h = RTPHeader(2000,int(self.portNum),0,0)
+					h.setACK(True)
+					h.setTimestamp(int(time.time() % 3600))
+					endPacket = RTPPacket(h,bytearray(0))
+					sock.sendto(endPacket.toByteStream(),(self.host,int(self.portNum)))
+					break; #we're done
 			except Exception as e:
 				tries += 1
 				if(tries == 3):
 					print("Socket timed out. Server may have crashed.")
 					return
 				print("Socket timed out. Resending...")
-			packet = self.streamToPacket(packet[0])
-			if(packet.getHeader().getACK()):
-				break
 		#close sockets and end connection
-		print("Closing connection...")
+		print("Closed connection...")
 		sock.close()
 		sockr.close()
 
