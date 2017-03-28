@@ -228,7 +228,9 @@ public class RTPServer {
 					sendRPacket(constantine.getPacketByteArray(),constantine.getHeader());
 				}
 				boolean wait = true;
-				while(wait) {
+				long startTime = System.nanoTime();
+				while(wait && ((System.nanoTime() - startTime) < 1000000)) {
+
 					try {
 						//System.out.println("waiting...");
 						DatagramPacket packet = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
