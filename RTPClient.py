@@ -116,21 +116,21 @@ class RTPClient:
 			window = RTPWindow(0,int(self.winSize) - 1,len(self.packets))
 		numPacks = 0
 		#make sure that we are indexing the right amount
+		tries = 0
 		while(not finished):
 			#go back N implementation
 			for i in range(window.getMin(),window.getMax() + 1):
 				p = self.packets[i]
+				#print("Sending: ",p)
 				#calc checksum and seq number of all the packets
 				p.getHeader().setChecksum(self.checksum(p))
 				p.getHeader().setseqNum(self.currSeqNum + i + 1)
 				#print(p.getHeader().getseqNum())
-				p.getHeader().setTimestamp(int(time.time() % 3600))
 				#send each packet (convert to bytes)
 				sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
 				#start timer in the window
 			#receive the acked packets one at a time, make sure everything is correct
 			wait = True
-			tries = 0
 			#make sure that it doesn't timeout, otherwise server may have crashed
 			startTime = time.process_time()
 			while(wait and ((time.process_time() - startTime) < 1)):
@@ -152,19 +152,24 @@ class RTPClient:
 							sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
 							break
 						wait = self.updateWindowSend(packet,window)
-					else: 
-						print("Got to receive")
-					#self.receive(sockRecv)
+						tries = 0
+					elif(packet.getHeader().getNACK() is True):
+						print("NACK Received. Resending...")
+						break
 				#packet received, check if we need to move the window or not
 				#good packets will now be converted into data, and updated properly
 				except Exception as e:
 					print(e)
 					print("Timedout, resending")
+					self.empty_socket(sock)
 					tries += 1
 					if(tries == 3):
 						print("Server may have crashed")
 						return
+					break
 		print("Receiving...")
+		self.empty_socket(sockRecv)
+		self.empty_socket(sock)
 		self.receive(sock,sockRecv)
 	
 	def receive(self,sock,sockRecv):
@@ -178,6 +183,7 @@ class RTPClient:
 		expectedPackets = []
 		while(not finished):
 			try:
+				self.empty_socket(sockRecv)
 				p,addr = sockRecv.recvfrom(1028)
 			except Exception as e:
 				print(e)
@@ -210,15 +216,14 @@ class RTPClient:
 		expectedPackets = sorted(list(expectedPackets), key=lambda p:p.getHeader().getseqNum())
 		for packet in expectedPackets:
 			expected = packet.getHeader().getChecksum()
-			print("A: ",a)
-			print("Expected: ",packet.getHeader().getseqNum())
+			#print("A: ",a)
+			#print("Expected: ",packet.getHeader().getseqNum())
 			if(self.checkCorrupt(expected,packet) or a != packet.getHeader().getseqNum()): #IMPLEMENT TIMEOUT
 					#packet is not accepted, send a nack
 					#drop window
 
 					h = RTPHeader(0,0,0,0)
 					h.setNACK(True)
-					h.setTimestamp(int(time.time() % 3600))
 					print("Sent NACK!")
 					sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
 					return [received,expectedSeqNum]
@@ -271,6 +276,7 @@ class RTPClient:
 					print("Socket timed out. Server may have crashed.")
 					return
 				print("Socket timed out. Resending...")
+				self.empty_socket(sock)
 		#close sockets and end connection
 		print("Closed connection...")
 		sock.close()
@@ -299,7 +305,7 @@ class RTPClient:
 	def checkCorrupt(self,expected,packet):
 		ei = int(expected)
 		pi = int(self.checksum(packet))
-		difference = ei - pi
+		#difference = ei - pi
 		#print(str(difference))
 		#print("ei: " + str(ei) + " pi: " + str(pi))
 		return int(packet.getHeader().getChecksum()) != int(expected)
@@ -317,5 +323,5 @@ class RTPClient:
 
 if __name__ == "__main__":
 	c = RTPClient(sys.argv[1],sys.argv[2],sys.argv[3])
-	c.transform("tests.txt")
+	c.transform("test.txt")
 	c.connect()
