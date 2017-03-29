@@ -6,7 +6,6 @@ from RTPHeader import RTPHeader
 from RTPPacket import RTPPacket
 import time
 import select
-import nanotime
 from RTPWindow import RTPWindow
 #networklab1 4000 5     #4000 5
 class RTPClient:
@@ -133,8 +132,8 @@ class RTPClient:
 			wait = True
 			tries = 0
 			#make sure that it doesn't timeout, otherwise server may have crashed
-			startTime = nanotime.now()
-			while(wait and ((nanotime.now() - startTime) < 1000000)):
+			startTime = time.process_time()
+			while(wait and ((time.process_time() - startTime) < 1)):
 				try:
 					packet = sockRecv.recvfrom(1028)
 					#check if packet is data packet or ACK/NACK etc
