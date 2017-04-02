@@ -78,9 +78,11 @@ class RTPClient:
             for p in packList:
                 f.write(str(p.getData().decode('utf-8')))
             f.close()
+            print("Transformed: ",self.textfile)
             running = False
         #Starts up the client, and gives it the necessary information needed
         def connect(self):
+            global end
             #Check if user wants to transform
             #create socket, bind, begin the sending process
             sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
@@ -110,7 +112,6 @@ class RTPClient:
                 except Exception as e:
                     tries += 1
                     if(tries == 3):
-                        print(e)
                         print("Socket timed out. Server may have crashed.")
                         end = True
                         return
@@ -132,7 +133,7 @@ class RTPClient:
                 print("Connection Refused sending Error. Try again!")
                 end = True
                 return
-            print("Connection Successful!")
+            #print("Connection Successful!")
             self.clientSock = sock
             self.clientSockRecv = sockRecv
             #self.send(sock,sockRecv)
@@ -158,7 +159,7 @@ class RTPClient:
                     p = self.packets[i]
                     #calc checksum and seq number of all the packets
                     p.getHeader().setChecksum(self.checksum(p))
-                    print("Sending: ",p.getHeader().getseqNum())
+                    #print("Sending: ",p.getHeader().getseqNum())
                     #print(p.getHeader().getseqNum())
                     #send each packet (convert to bytes)
                     sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
@@ -176,7 +177,7 @@ class RTPClient:
                             if(packet.getHeader().getACK() is True):
                             #send ACK
                                 if(len(self.packets) - 1 <= packet.getHeader().getseqNum()): 
-                                    print("Finished!")
+                                    #print("Finished!")
                                     finished = True
                                     while(True):
                                     #send a fin bit
@@ -191,7 +192,7 @@ class RTPClient:
                                 #if packet has data we go into receive state. Otherwise we go back to send state
                                             if(packet.getHeader().getACK() is True):
                                                 #self.empty_socket(sockRecv)
-                                                print("Receiving...")
+                                                #print("Receiving...")
                                                 self.receive(sock,sockRecv)
                                                 return
                                         except Exception as e:
@@ -212,14 +213,13 @@ class RTPClient:
                         #packet received, check if we need to move the window or not
                         #good packets will now be converted into data, and updated properly
                         except Exception as e:
-                            print(e)
                             print("Timedout, resending")
                             tries += 1
                             if(tries == 3):
                                 print("Server may have crashed")
                                 return
                             break
-            print("Receiving...")
+            #print("Receiving...")
             #self.empty_socket(sockRecv)
             self.receive(sock,sockRecv)
         
@@ -238,7 +238,7 @@ class RTPClient:
                 except Exception as e:
                     tries += 1
                     if(tries == 5):
-                        print(e)
+                        #print(e)
                         print("Socket timed out. Server may have crashed.")
                         return
                     else:
@@ -247,10 +247,10 @@ class RTPClient:
                     #send ACK
                 if(not rewait):
                     packet = self.streamToPacket(p)
-                    print("Received packet: ", packet.getHeader().getseqNum())
-                    print("Expecting Packet: ", expectedSeqNum)
+                    #print("Received packet: ", packet.getHeader().getseqNum())
+                    #print("Expecting Packet: ", expectedSeqNum)
                     if(packet.getHeader().getFIN()):
-                        print("Got fin bit!")
+                        #print("Got fin bit!")
                         finished = True;
                         break
                     if(expectedSeqNum == packet.getHeader().getseqNum()):
@@ -261,10 +261,10 @@ class RTPClient:
                     h.setACK(True)
                     if(expectedSeqNum != 0):
                         h.setseqNum(int(expectedSeqNum - 1))
-                        print("Sending ACK FOR: ", int(expectedSeqNum - 1))
+                        #print("Sending ACK FOR: ", int(expectedSeqNum - 1))
                         sock.sendto(RTPPacket(h,bytearray(0)).toByteStream(),(self.host,int(self.portNum)))
                     #This function will check what to do with expected
-            print("Turning into file...")
+            #print("Turning into file...")
             received = sorted(list(received.values()),key=lambda x:x.getHeader().getseqNum())
             self.writeToFile(received)
                 ##TODO SET UP CASE TO SEE IF WE ARE DONE##
@@ -290,7 +290,7 @@ class RTPClient:
             tries = 0
             #send disconnect (finish)
             while(True):
-                print("Sent NACK")
+                #print("Sent NACK")
                 h = RTPHeader(2000,int(self.portNum),0,0)
                 h.setFIN(True)
                 h.setNACK(True)
@@ -300,7 +300,7 @@ class RTPClient:
         #receive disconnect
                 try:
                     ans,addr = sockr.recvfrom(1028)
-                    print("Received!")
+                    #print("Received!")
                     p = self.streamToPacket(ans)
                     if(p.getHeader().getACK()):
                         h = RTPHeader(2000,int(self.portNum),0,0)
@@ -381,7 +381,7 @@ def commandProcessThread():
     global end
     running = False
     networkClient  = RTPClient(sys.argv[1], sys.argv[2], sys.argv[3])
-    print("started client")
+    #print("started client")
     networkClient.connect()
     process = True
     while process:
@@ -395,12 +395,12 @@ def commandProcessThread():
                     targetFile = command.split(" ")[1]
                     print("Transforming " + targetFile)
                     networkClient.transform(targetFile)
-                    print("Calling send packets")
+                    #print("Calling send packets")
                     networkClient.sendPackets()
                 elif command.startswith("disconnect"):
                     networkClient.disconnectSockets()
                     process = False
-                    print("Ended connection with client")
+                    #print("Ended connection with client")
                     end = True
                     return
                 else:
