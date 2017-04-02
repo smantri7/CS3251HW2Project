@@ -7,7 +7,7 @@ from RTPPacket import RTPPacket
 import time
 import select
 from RTPWindow import RTPWindow
-import thread
+import _thread
 
 #networklab1 4000 5     #4000 5
 
@@ -384,8 +384,8 @@ def commandProcessThread(host, port, windowSize):
 
 
 def startThreads():
-    thread.start_new_thread(userInputThread)
-    thread.start_new_thread(commandProcessThread)
+    _thread.start_new_thread(userInputThread)
+    _thread.start_new_thread(commandProcessThread)
 
 if __name__ == "__main__":
         # c = RTPClient(sys.argv[1],sys.argv[2],sys.argv[3])
