@@ -135,6 +135,10 @@ public class RTPServer {
 					System.out.println("Disconnecting...");
 					disconnect();
 				}
+				if(receivedHeader.isSYN()) {
+					state = 1;
+					packetReceivedBuffer.clear();
+				}
 				if (state == 3 && receivedHeader.isFIN()) {
 					if(receivedHeader.isNACK()) {
 						System.out.println("Disconnecting...");
@@ -172,7 +176,17 @@ public class RTPServer {
 							byte[] packetBytes = responsePacket.getEntireByteArray();
 							sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
 							sendSocket.send(sendPacket);
-						} 
+						} else if (seqNum != 0) {
+							RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
+							responseHeader.setseqNum(seqNum - 1);
+							responseHeader.setACK(true);
+							System.out.printf("Sent ACK for... %d\n",seqNum);
+							RTPPacket responsePacket = new RTPPacket(responseHeader, null);
+							responsePacket.updateChecksum();
+							byte[] packetBytes = responsePacket.getEntireByteArray();
+							sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
+							sendSocket.send(sendPacket);
+						}
 					} 
 				}
 				if (receivedHeader.getChecksum() == receivedRTPPacket.calculateChecksum()) {

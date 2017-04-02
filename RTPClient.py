@@ -13,7 +13,6 @@ import _thread
 running = False
 commandQueue = []
 end = False
-
 def queue(item):
     global commandQueue
     commandQueue.append(item)
@@ -82,61 +81,64 @@ class RTPClient:
             running = False
         #Starts up the client, and gives it the necessary information needed
         def connect(self):
-                #Check if user wants to transform
-                #create socket, bind, begin the sending process
-                sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-                sockRecv = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
-                sock.bind((socket.gethostname(),2000))
-                sockRecv.bind((socket.gethostname(),2001))
-                #set the time out
-                sockRecv.settimeout(1)
-                #Before starting we need to get RTT with SYN bit
+            #Check if user wants to transform
+            #create socket, bind, begin the sending process
+            sock = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+            sockRecv = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+            sock.bind((socket.gethostname(),2000))
+            sockRecv.bind((socket.gethostname(),2001))
+            #set the time out
+            sockRecv.settimeout(1)
+            #Before starting we need to get RTT with SYN bit
 
-                h = RTPHeader(int(self.portNum) + 1,self.portNum,0,0)
-                h.setSYN(True)
-                pikmin = RTPPacket(h,bytearray(0))
-                pikmin.getHeader().setseqNum(0) #initial seq number of client
-                pikmin.getHeader().setChecksum(self.checksum(pikmin)) #checksum of packet
+            h = RTPHeader(int(self.portNum) + 1,self.portNum,0,0)
+            h.setSYN(True)
+            pikmin = RTPPacket(h,bytearray(0))
+            pikmin.getHeader().setseqNum(0) #initial seq number of client
+            pikmin.getHeader().setChecksum(self.checksum(pikmin)) #checksum of packet
 
-                #Incase server crashes initially during 3-way handshake
-                #Client sends syn bit and initial seq number
-                #Client receives syn ack on, server init seq number
-                #Client sends ack for that
-                tries = 0
-                while True:
-                        sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
-                        try:
-                                resSock = sockRecv.recvfrom(1028)
-                                break
-                        except Exception as e:
-                                tries += 1
-                                if(tries == 3):
-                                    print(e)
-                                    print("Socket timed out. Server may have crashed.")
-                                    return
-                #calculate timeouts
-                sock.settimeout(2)
-                sockRecv.settimeout(2)
-                packet = self.streamToPacket(resSock[0])
-                if(packet.getHeader().getACK() is False or packet.getHeader().getSYN() is False or packet.getHeader().getseqNum() != (pikmin.getHeader().getseqNum() + 1)): #you also need to check for ack to the syn with an ack number that is the ISN+1
-                        print("Connection Refused! Try again!")
-                        return
-                #Make sure to ACK the new
+            #Incase server crashes initially during 3-way handshake
+            #Client sends syn bit and initial seq number
+            #Client receives syn ack on, server init seq number
+            #Client sends ack for that
+            tries = 0
+            while True:
+                sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
                 try:
-                        h = RTPHeader(2000,int(self.portNum) + 1,0,0)
-                        h.setACK(True)
-                        pikmin = RTPPacket(h,bytearray(0))
-                        sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
+                    resSock = sockRecv.recvfrom(1028)
+                    break
                 except Exception as e:
-                        print("Connection Refused sending Error. Try again!")
+                    tries += 1
+                    if(tries == 3):
+                        print(e)
+                        print("Socket timed out. Server may have crashed.")
+                        end = True
                         return
-                print("Connection Successful!")
-                self.clientSock = sock
-                self.clientSockRecv = sockRecv
-                #self.send(sock,sockRecv)
-                #receive(sockRecv)
-                #Now we can start the true connection
-                #################################################
+            #calculate timeouts
+            sock.settimeout(2)
+            sockRecv.settimeout(2)
+            packet = self.streamToPacket(resSock[0])
+            if(packet.getHeader().getACK() is False or packet.getHeader().getSYN() is False or packet.getHeader().getseqNum() != (pikmin.getHeader().getseqNum() + 1)): #you also need to check for ack to the syn with an ack number that is the ISN+1
+                print("Connection Refused! Try again!")
+                end = True
+                return
+            #Make sure to ACK the new
+            try:
+                h = RTPHeader(2000,int(self.portNum) + 1,0,0)
+                h.setACK(True)
+                pikmin = RTPPacket(h,bytearray(0))
+                sock.sendto(pikmin.toByteStream(),(self.host,int(self.portNum)))
+            except Exception as e:
+                print("Connection Refused sending Error. Try again!")
+                end = True
+                return
+            print("Connection Successful!")
+            self.clientSock = sock
+            self.clientSockRecv = sockRecv
+            #self.send(sock,sockRecv)
+            #receive(sockRecv)
+            #Now we can start the true connection
+            #################################################
         def sendPackets(self):
             if self.clientSock is None or self.clientSockRecv is None:
                 print("client is not yet connected")
@@ -151,72 +153,72 @@ class RTPClient:
             #make sure that we are indexing the right amount
             tries = 0
             while(not finished):
-                    #go back N implementation
-                    for i in range(window.getMin(),window.getMax() + 1):
-                        p = self.packets[i]
-                        #calc checksum and seq number of all the packets
-                        p.getHeader().setChecksum(self.checksum(p))
-                        print("Sending: ",p.getHeader().getseqNum())
-                        #print(p.getHeader().getseqNum())
-                        #send each packet (convert to bytes)
-                        sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
-                        #start timer in the window
-                    #receive the acked packets one at a time, make sure everything is correct
-                    wait = True
-                    #make sure that it doesn't timeout, otherwise server may have crashed
-                    startTime = time.process_time()
-                    while(wait and ((time.process_time() - startTime) < 1)):
-                            try:
-                                packet = sockRecv.recvfrom(1028)
-                                #check if packet is data packet or ACK/NACK etc
-                                packet = self.streamToPacket(packet[0])
+                #go back N implementation
+                for i in range(window.getMin(),window.getMax() + 1):
+                    p = self.packets[i]
+                    #calc checksum and seq number of all the packets
+                    p.getHeader().setChecksum(self.checksum(p))
+                    print("Sending: ",p.getHeader().getseqNum())
+                    #print(p.getHeader().getseqNum())
+                    #send each packet (convert to bytes)
+                    sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
+                    #start timer in the window
+                #receive the acked packets one at a time, make sure everything is correct
+                wait = True
+                #make sure that it doesn't timeout, otherwise server may have crashed
+                startTime = time.process_time()
+                while(wait and ((time.process_time() - startTime) < 1)):
+                        try:
+                            packet = sockRecv.recvfrom(1028)
+                            #check if packet is data packet or ACK/NACK etc
+                            packet = self.streamToPacket(packet[0])
+                            #if packet has data we go into receive state. Otherwise we go back to send state
+                            if(packet.getHeader().getACK() is True):
+                            #send ACK
+                                if(len(self.packets) - 1 <= packet.getHeader().getseqNum()): 
+                                    print("Finished!")
+                                    finished = True
+                                    while(True):
+                                    #send a fin bit
+                                        h = RTPHeader(0,0,0,0)
+                                        h.setFIN(True)
+                                        p = RTPPacket(h,bytearray(0))
+                                        sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
+                                        try:
+                                            packet = sockRecv.recvfrom(1028)
+                                            #check if packet is data packet or ACK/NACK etc
+                                            packet = self.streamToPacket(packet[0])
                                 #if packet has data we go into receive state. Otherwise we go back to send state
-                                if(packet.getHeader().getACK() is True):
-                                #send ACK
-                                    if(len(self.packets) - 1 <= packet.getHeader().getseqNum()): 
-                                        print("Finished!")
-                                        finished = True
-                                        while(True):
-                                        #send a fin bit
-                                            h = RTPHeader(0,0,0,0)
-                                            h.setFIN(True)
-                                            p = RTPPacket(h,bytearray(0))
-                                            sock.sendto(p.toByteStream(),(self.host,int(self.portNum)))
-                                            try:
-                                                packet = sockRecv.recvfrom(1028)
-                                                #check if packet is data packet or ACK/NACK etc
-                                                packet = self.streamToPacket(packet[0])
-                                    #if packet has data we go into receive state. Otherwise we go back to send state
-                                                if(packet.getHeader().getACK() is True):
-                                                    #self.empty_socket(sockRecv)
-                                                    print("Receiving...")
-                                                    self.receive(sock,sockRecv)
-                                                    return
-                                            except Exception as e:
-                                                print("Timedout, resending")
-                                                tries += 1
-                                                if(tries == 3):
-                                                    print("Server may have crashed")
-                                                    return
-                                    wait = self.updateWindowSend(packet,window)
-                                    tries = 0
-                                else:
-                                    print("Timedout... Resending...")
-                                    tries += 1
-                                    if(tries == 3):
-                                        print("Server may have crashed")
-                                        return
-                                    break
-                            #packet received, check if we need to move the window or not
-                            #good packets will now be converted into data, and updated properly
-                            except Exception as e:
-                                print(e)
-                                print("Timedout, resending")
+                                            if(packet.getHeader().getACK() is True):
+                                                #self.empty_socket(sockRecv)
+                                                print("Receiving...")
+                                                self.receive(sock,sockRecv)
+                                                return
+                                        except Exception as e:
+                                            print("Timedout, resending")
+                                            tries += 1
+                                            if(tries == 3):
+                                                print("Server may have crashed")
+                                                return
+                                wait = self.updateWindowSend(packet,window)
+                                tries = 0
+                            else:
+                                print("Timedout... Resending...")
                                 tries += 1
                                 if(tries == 3):
                                     print("Server may have crashed")
                                     return
                                 break
+                        #packet received, check if we need to move the window or not
+                        #good packets will now be converted into data, and updated properly
+                        except Exception as e:
+                            print(e)
+                            print("Timedout, resending")
+                            tries += 1
+                            if(tries == 3):
+                                print("Server may have crashed")
+                                return
+                            break
             print("Receiving...")
             #self.empty_socket(sockRecv)
             self.receive(sock,sockRecv)
@@ -334,39 +336,6 @@ class RTPClient:
                     return False
             return True
 
-        def disconnect(self,sock,sockr):
-            tries = 0
-            #send disconnect (finish)
-            while(True):
-                h = RTPHeader(2000,int(self.portNum),0,0)
-                h.setFIN(True)
-                h.setTimestamp(int(time.time() % 3600))
-                endPacket = RTPPacket(h,bytearray(0))
-                sock.sendto(endPacket.toByteStream(),(self.host,int(self.portNum)))
-        #receive disconnect
-                try:
-                    ans,addr = sockr.recvfrom(1028)
-                    print("Received!")
-                    p = self.streamToPacket(ans)
-                    if(p.getHeader().getACK()):
-                        h = RTPHeader(2000,int(self.portNum),0,0)
-                        h.setACK(True)
-                        h.setTimestamp(int(time.time() % 3600))
-                        endPacket = RTPPacket(h,bytearray(0))
-                        sock.sendto(endPacket.toByteStream(),(self.host,int(self.portNum)))
-                        break; #we're done
-                except Exception as e:
-                    tries += 1
-                    if(tries == 3):
-                            print("Socket timed out. Server may have crashed.")
-                            return
-                    print("Socket timed out. Resending...")
-                            #self.empty_socket(sock)
-            #close sockets and end connection
-            print("Closed connection...")
-            sock.close()
-            sockr.close()
-
         #moves your send window
         def updateWindowSend(self,packet,window):
             curSeq = packet.getHeader().getseqNum()
@@ -437,6 +406,8 @@ def commandProcessThread():
                 else:
                     print("Command not recognized")
                     continue
+            elif end == True:
+                return
 
 
 def startThreads():
@@ -448,6 +419,7 @@ if __name__ == "__main__":
         # c.transform("tests.txt")
         # c.connect()
         # c.sendPackets()
+        end = False
         startThreads()
         while True:
             if(end is True):
