@@ -261,7 +261,8 @@ class RTPClient:
                 received = sorted(list(received.values()),key=lambda x:x.getHeader().getseqNum())
                 self.writeToFile(received)
                 ##TODO SET UP CASE TO SEE IF WE ARE DONE##
-                self.disconnect(sock,sockRecv)
+                self.packets = []
+                #self.disconnect(sock,sockRecv)
 
         def checkPackets(self,packet,expectedSeqNum,received,sock):
                 expected = packet.getHeader().getChecksum()
@@ -276,6 +277,9 @@ class RTPClient:
                         expectedSeqNum += 1
                         return [received, expectedSeqNum]
         
+        def disconnectSockets(self):
+            self.disconnect(self.clientSock, self.clientSockRecv)
+
         def disconnect(self,sock,sockr):
                 tries = 0
                 #send disconnect (finish)
@@ -357,6 +361,24 @@ def userInputThread():
 def commandProcessThread(host, port, windowSize):
     global networkClient
     networkClient = RTPClient(host, port, windowSize)
+    process = True
+    while process:
+        command = dequeue()
+        if command is not None:
+            if command.startswith("transform"):
+                if not command.contains(" "):
+                    print("Incorrect transform syntax")
+                    continue
+                targetFile = command.split(" ")[1]
+                print("Transforming " + targetFile)
+                networkClient.transform(targetFile)
+                networkClient.sendPackets()
+            elif command.startswith("disconnect"):
+                networkClient.disconnectSockets()
+                process = False
+            else:
+                print("Command not recognized")
+                continue
 
 
 if __name__ == "__main__":
