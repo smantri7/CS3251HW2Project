@@ -11,7 +11,6 @@ import _thread
 
 #networklab1 4000 5     #4000 5
 
-networkClient = None
 commandQueue = []
 
 def queue(item):
@@ -355,20 +354,20 @@ class RTPClient:
 
 def userInputThread():
     while True:
-        print(">")
         command = input()
         queue(command)
 
 
-def commandProcessThread(host, port, windowSize):
-    global networkClient
-    networkClient = RTPClient(host, port, windowSize)
+def commandProcessThread():
+    networkClient  = RTPClient(sys.argv[1], sys.argv[2], sys.argv[3])
+    print("started client")
+    networkClient.connect()
     process = True
     while process:
         command = dequeue()
         if command is not None:
             if command.startswith("transform"):
-                if not command.contains(" "):
+                if " " not in command:
                     print("Incorrect transform syntax")
                     continue
                 targetFile = command.split(" ")[1]
@@ -393,4 +392,6 @@ if __name__ == "__main__":
         # c.connect()
         # c.sendPackets()
         startThreads()
+        while True:
+            pass
 
