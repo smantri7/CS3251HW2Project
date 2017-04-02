@@ -131,50 +131,8 @@ public class RTPServer {
 
 				RTPPacket receivedRTPPacket = new RTPPacket(receivedData);
 				RTPHeader receivedHeader = receivedRTPPacket.getHeader();
-				//System.out.println(receivedHeader.isSYN());
-				//Validate Checksum
-				//System.out.println(receivedHeader.getChecksum());
-				//System.out.println(receivedRTPPacket.calculateChecksum());
-				//put incoming packets into receive buffer
-				//fin indicates end of file
-				if (state == 4 && receivedHeader.isFIN()) {
-					System.out.println("Closing connection with the client...");
-					int tries = 0;
-					while(true) {
-						//Now we send the finACK
-						try {
-							System.out.println("Sending Fin ACK");
-							RTPHeader rtpHeader = new RTPHeader();
-							rtpHeader.setTimestamp((int) ((System.currentTimeMillis()/1000) % 3600));
-							RTPPacket rtpPacket = new RTPPacket(rtpHeader, null);
-							rtpPacket.updateChecksum();
-							sendRPacket(rtpPacket.getEntireByteArray(),rtpPacket.getHeader());
-
-							//Now we receive the ACK from Client
-							DatagramPacket p = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
-							recvSocket.receive(p);
-							byte[] rd = new byte[p.getLength()];
-							rd = Arrays.copyOfRange(p.getData(),0,p.getLength());
-							RTPPacket rp = new RTPPacket(rd);
-							RTPHeader rh = rp.getHeader();
-							//receive the final ack. Close everything and sockets
-							if(rh.isACK()) {
-								System.out.println("Client closed...");
-								state = 1;
-								break;
-
-							}
-							//end the connection
-						} catch(Exception e) {
-							tries += 1;
-							if(tries == 3) {
-								System.out.println("Client may have crashed, forcibly ending connection");
-								state = 1;
-								break;
-							}
-							System.out.println("Error. Resending Fin bit...");
-						}
-					}
+				if(receivedHeader.isFIN() && receivedHeader.isNACK()) {
+					disconnect();
 				}
 				if (state == 3 && receivedHeader.isFIN()) {
 					Collections.sort(packetReceivedBuffer);
@@ -187,42 +145,30 @@ public class RTPServer {
 					}
 					System.out.println("Switching to send...");
 					seqNum = 0;
-					createFileFromByteArray(outputStream.toByteArray());
-					packetReceivedBuffer.clear();
-					state = 1;	
+					createFileFromByteArray(outputStream.toByteArray());	
 					//server send state//
 				}
 				if (state == 3) {
 					if(receivedRTPPacket.getHeader().getChecksum() == receivedRTPPacket.calculateChecksum()) {
 						System.out.printf("Received PacketSeqNum... %d\n",receivedRTPPacket.getHeader().getseqNum());
+						System.out.printf("Current Seq Num: %d\n",seqNum);
 						if(seqNum == receivedRTPPacket.getHeader().getseqNum()) {
 							RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
-							responseHeader.setACK(true);
 							responseHeader.setseqNum(seqNum);
+							responseHeader.setACK(true);
 							System.out.printf("Sent ACK for... %d\n",seqNum);
 							RTPPacket responsePacket = new RTPPacket(responseHeader, null);
 							responsePacket.updateChecksum();
-							packetReceivedBuffer.add(receivedRTPPacket);
+							if(isBuffer(receivedRTPPacket.getHeader().getseqNum()) && !receivedRTPPacket.getHeader().isNACK()) {
+								System.out.println("Added!");
+								packetReceivedBuffer.add(receivedRTPPacket);
+							}
 							seqNum += 1;
 							byte[] packetBytes = responsePacket.getEntireByteArray();
 							sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
 							sendSocket.send(sendPacket);
-						}
+						} 
 					} 
-					//else {
-						//send a NACK
-					//	RTPHeader responseHeader = new RTPHeader(srcPort, recvPacket.getPort(), 0); //0 for now
-					//	responseHeader.setNACK(true);
-					//	responseHeader.setseqNum(receivedHeader.getseqNum() + 1);
-					//	RTPPacket responsePacket = new RTPPacket(responseHeader, null);
-					//	responsePacket.updateChecksum();
-//
-//						byte[] packetBytes = responsePacket.getEntireByteArray();
-//						System.out.println("Send Nack...");
-//						sendPacket = new DatagramPacket(packetBytes, packetBytes.length, dstAddress, 2001);
-//					}
-					//System.out.println("Sent ACK packet in state 3");
-					//System.out.printf("Seq number is: %d",responsePacket.getHeader().getseqNum());
 				}
 				if (receivedHeader.getChecksum() == receivedRTPPacket.calculateChecksum()) {
 					//Handshake
@@ -251,7 +197,8 @@ public class RTPServer {
 				// byte[] responseArray = responsePacket.getPacketByteArray();
 				// socket.send(new DatagramPacket(responseArray, responseArray.length));
 			} catch (IOException e) {
-				e.printStackTrace();
+				//e.printStackTrace();
+				e.getMessage();
 			}
 
 		}
@@ -307,6 +254,10 @@ public class RTPServer {
 					System.out.println("Received Packet!");
 					//System.out.println(receivedH.getseqNum());
 					//System.out.println(receivedH.isSYN());
+					if(receivedH.isFIN() && receivedH.isNACK()) {
+						//we go to disconnect immediately
+						disconnect();
+					}
 					if(receivedH.isACK()) { //TIMEOUT IMPLEMENTATION
 					//we want to update window pointers
 						tries = 0; //reset
@@ -329,7 +280,6 @@ public class RTPServer {
 							finished = true;
 							System.out.println("Go back to listen state?");
 							seqNum = 0;
-							state = 4;
 							listen();
 						}
 						System.out.println(receivedP.getHeader().getseqNum());
@@ -337,9 +287,9 @@ public class RTPServer {
 						wait = updateWindowSend(receivedP, window);
 					}
 				} catch(Exception e) {
-					System.out.println("caught exception 1");
-					e.printStackTrace();
-					System.out.println(e.getMessage());
+					//System.out.println("caught exception 1");
+					//e.printStackTrace();
+					//System.out.println(e.getMessage());
 					break;
 				}
 			}			
@@ -351,6 +301,9 @@ public class RTPServer {
 			seqNum = packet.getHeader().getseqNum() + 1;
 			window.setMin(packet.getHeader().getseqNum() + 1);
 			int max = (window.getMin() + wSize > packetList.size()) ? packetList.size() - 1 : window.getMin() + wSize - 1;
+			if(max == packetList.size() - 1) {
+				window.setMin(packetList.size() - wSize);
+			}
 			window.setMax(max);
 			return false;
 		}
@@ -359,6 +312,56 @@ public class RTPServer {
 
 	public boolean timeout(RTPPacket packet) {
 		return (((int) ((System.currentTimeMillis()/1000) % 3600)) - packet.getHeader().getTimestamp()) > 2*rtt;
+	}
+
+	public void disconnect() {
+		System.out.println("Closing connection with the client...");
+		int tries = 0;
+		while(true) {
+			//Now we send the finACK
+			try {
+				System.out.println("Sending Fin ACK");
+				RTPHeader rtpHeader = new RTPHeader();
+				RTPPacket rtpPacket = new RTPPacket(rtpHeader, null);
+				rtpPacket.updateChecksum();
+				sendRPacket(rtpPacket.getEntireByteArray(),rtpPacket.getHeader());
+
+				//Now we receive the ACK from Client
+				DatagramPacket p = new DatagramPacket(new byte[MAXBUFFER],MAXBUFFER);
+				recvSocket.receive(p);
+				byte[] rd = new byte[p.getLength()];
+				rd = Arrays.copyOfRange(p.getData(),0,p.getLength());
+				RTPPacket rp = new RTPPacket(rd);
+				RTPHeader rh = rp.getHeader();
+				//receive the final ack. Close everything and sockets
+				if(rh.isACK()) {
+					System.out.println("Client closed...");
+					state = 1;
+					break;
+				}
+		//end the connection
+			} catch(Exception e) {
+				tries += 1;
+				if(tries == 3) {
+					System.out.println("Client may have crashed, forcibly ending connection");
+					state = 1;
+					break;
+				}
+				System.out.println("Error. Resending Fin bit...");
+			}
+		}
+		state = 1;
+		listen();
+	}
+
+	public boolean isBuffer(int s) {
+		for(RTPPacket p : packetReceivedBuffer) {
+			if(p.getHeader().getseqNum() == s) {
+				return false;
+			}
+		}
+		System.out.println("Adding to buffer!");
+		return true;
 	}
 
 	public static void main(String args[]) throws Exception {
