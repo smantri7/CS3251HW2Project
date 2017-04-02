@@ -384,8 +384,8 @@ def commandProcessThread(host, port, windowSize):
 
 
 def startThreads():
-    _thread.start_new_thread(userInputThread)
-    _thread.start_new_thread(commandProcessThread)
+    _thread.start_new_thread(userInputThread, ())
+    _thread.start_new_thread(commandProcessThread, ())
 
 if __name__ == "__main__":
         # c = RTPClient(sys.argv[1],sys.argv[2],sys.argv[3])
