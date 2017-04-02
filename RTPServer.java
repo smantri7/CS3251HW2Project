@@ -132,9 +132,14 @@ public class RTPServer {
 				RTPPacket receivedRTPPacket = new RTPPacket(receivedData);
 				RTPHeader receivedHeader = receivedRTPPacket.getHeader();
 				if(receivedHeader.isFIN() && receivedHeader.isNACK()) {
+					System.out.println("Disconnecting...");
 					disconnect();
 				}
 				if (state == 3 && receivedHeader.isFIN()) {
+					if(receivedHeader.isNACK()) {
+						System.out.println("Disconnecting...");
+						disconnect();
+					}
 					Collections.sort(packetReceivedBuffer);
 					System.out.println(packetReceivedBuffer.size());
 					ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -301,9 +306,9 @@ public class RTPServer {
 			seqNum = packet.getHeader().getseqNum() + 1;
 			window.setMin(packet.getHeader().getseqNum() + 1);
 			int max = (window.getMin() + wSize > packetList.size()) ? packetList.size() - 1 : window.getMin() + wSize - 1;
-			if(max == packetList.size() - 1) {
-				window.setMin(packetList.size() - wSize);
-			}
+			//if(max == packetList.size() - 1) {
+			//	window.setMin(packetList.size() - wSize);
+			//}
 			window.setMax(max);
 			return false;
 		}
